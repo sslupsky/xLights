@@ -43,8 +43,8 @@ Library:     libavcodec/ffmpeg
 Usage:       Audio and Video processing
 Link:        https://www.ffmpeg.org/
 Source:      https://github.com/FFmpeg/FFmpeg
-Last Pulled: Oct 10, 2019 - Windows binaries directly from ffmpeg.org
-Version:     4.2.1 [latest available as at Jan 2021 is 4.3.1]
+Last Pulled: Feb 6, 2022 - Windows binaries directly from https://github.com/BtbN/FFmpeg-Builds/releases
+Version:     5.0
 License:     LGPL
 Strategy:    Windows: Selected header files are included in the xLights repository along with precompiled libraries and DLLs.
 
@@ -200,3 +200,22 @@ Last Pulled: 2019-09-27
 Version:     1.3.1 [Latest version as at Jan 2021 is 1.3.1 released Apr 2019]
 License:     GNU Lesser GPL2
 Strategy:    Header added to repository. static libraries added for windows
+
+Library:     libxlsxwriter
+Usage:       write SpreadSheet files
+Link:        https://github.com/jmcnamara/libxlsxwriter
+Source:      https://github.com/jmcnamara/libxlsxwriter
+Last Pulled:
+Version:	 [latest version available as at Jan 2022 is 1.1.4 released Oct 2021]
+License:     BSD
+Strategy:    added as git submodule, build lib with cMake or make
+
+Library:     WS2812FX & WLED & FastLED
+Usage:       Single strand effect FX
+Link:        https://github.com/Aircoookie/WLED
+Source:      https://github.com/Aircoookie/WLED
+Last Pulled:
+Version:	 January 2021
+License:     MIT
+Strategy:    FX.cpp and FX.h created as a merge of all dependent functions across libraries. To the degree possible the actual effect
+             algorithms are unchanged.

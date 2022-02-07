@@ -11,6 +11,76 @@ Issue Tracker is found here: www.github.com/smeighan/xLights/issues
 
 XLIGHTS/NUTCRACKER RELEASE NOTES
 ---------------------------------
+2022.04 February 5, 2022
+   -- enh (dkulp) MacOS: Move to FFMPEG 5 for accelerated ProRes video decoding on M1 Pro/Max
+   -- enh (dkulp) MacOS: Update 3D Mouse support to manipulate individual control points
+   -- enh (dkulp) MacOS: Enhanced iCloud support to make sure files are fully downloaded when needed
+   -- enh (dkulp) Change export model videos to mp4 (from avi) to fix issues trying to import into various apps (like FinalCut)
+   -- enh (keith) Add FX to single strand effect. This is a port of WS2812FX/FastLED as modified by WLED into xLights.
+   -- enh (keith) Add keybindings for model data, faces, states and submodels
+   -- enh (keith) VUMeter: Use sensitivity setting in VU Meter Timing Event Colour to control the transparency of the colour when no timing mark is actually present
+   -- enh (scott) Change xlDo controller and model commands to use JSON list type. Added more lua type wrappers to methods
+   -- enh (keith) Add ability to change temporarily multiple times before restoring to permanent
+   -- enh (keith) Warn user if they change show folder to a non-empty folder that does not contain networks or rgbeffects
+   -- bug (MikeSoukup) Include middle pixel for Single Strand / From Middle effect with odd number of nodes
+   -- bug (keith) Fix falcon WAV file header validation
+   -- bug (keith) Prevent negative drops on icicles
+   -- bug (keith) F1 on layout tab can cause a never ending loop
+   -- bug (dkulp) Fix undo of view object movements
+   -- bug (dkulp) Fix video preview on Windows
+   -- bug (keith) VUMeter:  Level colour shows white before it is first triggered
+   -- bug (keith) Crash loading submodel which references nodes that are out of range in the model
+   -- bug (dkulp) Fix arch/single line/candycane rotation around center
+   -- bug (gil)   Fix issue with Per Model Default Deep not creating large enough buffer
+2022.03 January 22, 2022
+   -- enh (dkulp) MacOS: Initial support for 3DConnexion 3D mice in Preview windows
+   -- enh (dkulp) MacOS: Support for using normals for shading 3D meshes
+   -- enh (sslupsky) Add support for differential ports for BBB16v2
+   -- enh (gil)   Add new render buffer "Per Model Default Deep" that will recurse nested model groups
+   -- bug (dkulp) MacOS: Fix scrolling/displays on OSX after play finishes
+   -- bug (dkulp) Fix group centering + if  submodels are in the group
+   -- bug (dkulp) Fix several issues with mesh/obj files not rendering properly
+   -- bug (dkulp) Fix crashes if material files cannot be loaded
+   -- bug (dkulp) Fix problems on OpenGL with single color strings
+   -- bug (scott) Fix crashes in custom model wiring view
+   -- bug (gil)   Fix issues with PolyLine caused by multiple string upgrades
+   -- bug (keith) Fix cyan first pixel on some models showing incorrectly
+2022.02 January 15, 2022
+   Note: macOS now requires macOS 10.14.  10.12 and 10.13 are no longer supported
+   Note: The DMX models have changed from using world coordinates for various sizes (like beam lengths) to
+         values relative to the size/scale parameters.  Thus, users will need adjust things to accomodate.
+         Pixel sizes are also consistent between 2D and 3D and thus may also need adjusting.
+   -- enh (gil)   Add multiple string support to PolyLine
+   -- enh (dkulp) Move all UI views from OpenGL to Metal on macOS
+   -- enh (dkulp) 3D and 2D layouts use same code paths (just flattend for 2D) so features like cyan starting
+                  nodes will work on 3D layout.
+   -- enh (dkulp) 2D layouts now use flattened 3D meshes for DMX models instead of a red X
+   -- enh (scott) Automation: add getModels, getControllerNames and getControllerIPs
+   -- enh (scott) Add LUA scripting engine for scripting Automations
+   -- enh (keith) Show which panes are visible with checkmarks in the view menu
+   -- enh (dkulp) Add Warp to Metal GPU rendering
+   -- enh (gil)   Add multiple string support to PolyLine
+   -- bug (keith) On some models, the cyan "first node" marker is in the wrong location
+   -- bug (robfallone) Fix Per Model Per Preview doesn't include all Single Line models in group
+   -- bug (Nick Krecklow) Use full LOR brightness encoding range in LOROutput
+   -- bug (keith) Fix highlighting of nodes in submodels and states where nodes are reused across multiple rows
+   -- bug (scott) Increase number of universes for v4 ESPixelStick
+2022.01 January 6, 2022
+   NOTE: This will be the last version to support macOS 10.12 and 10.13.   Future builds will
+         require macOS 10.14 or newer.
+   -- enh (keith) Small models in groups may use render buffers that are too small and cause pixelation.  Fixes #2866
+   -- enh (scott) Change export of models/controller connections to xls file instead of csv
+   -- enh (scott) Copy Smart Remote settings on Replace Model with model
+   -- enh (sslupsky) controller: add support for default gamma
+   -- enh (keith) Make model dimensions editable in real world units
+   -- enh (scott) added packageSequence and packageLogFiles automation
+   -- enh (scott) Added Remove All Models conformation dialog
+   -- enh (cjd) Add ttyACM* devices (fixes #3016)
+   -- enh (scott) download package sequence as zip file
+   -- bug (keith) Fix FV3 does not reset zigzag when configuring a port
+   -- bug (keith) Fix #3040 xlDo does not unescape some characters
+   -- bug (keith) Fix #3045 ... add more sequence properties to getOpenSequence call
+   -- bug (scott) regenerate timingList after importing timing tracks
 2021.40 December 20, 2021
    -- enh (scott) Add alternate node support to horizontal matrix
    -- enh (keith) Add a selected count on FPP connect

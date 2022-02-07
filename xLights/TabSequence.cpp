@@ -38,6 +38,7 @@
 #include "ColoursPanel.h"
 #include "sequencer/MainSequencer.h"
 #include "HousePreviewPanel.h"
+#include "ExternalHooks.h"
 
 #include "xLightsVersion.h"
 
@@ -83,7 +84,7 @@ wxString xLightsFrame::LoadEffectsFileNoCheck()
     wxString myString = "Hello";
     UnsavedRgbEffectsChanges = false;
 
-    if (!effectsFile.FileExists()) {
+    if (!FileExists(effectsFile)) {
         // file does not exist, so create an empty xml doc
         CreateDefaultEffectsXml();
     }
@@ -94,7 +95,7 @@ wxString xLightsFrame::LoadEffectsFileNoCheck()
         xx.SetExt("xbkp");
         wxString asfile = xx.GetLongPath();
 
-        if (((!_renderMode && !_checkSequenceMode) || _promptBatchRenderIssues) && wxFile::Exists(asfile)) {
+        if (((!_renderMode && !_checkSequenceMode) || _promptBatchRenderIssues) && FileExists(asfile)) {
             // the autosave file exists
             wxDateTime xmltime = fn.GetModificationTime();
             wxFileName asfn(asfile);
@@ -117,7 +118,7 @@ wxString xLightsFrame::LoadEffectsFileNoCheck()
                     wxRenameFile(asfile, effectsFile.GetFullPath());
                 }
                 else {
-                    if (wxFile::Exists(fn.GetFullPath())) {
+                    if (FileExists(fn.GetFullPath())) {
                         //set the backup to be older than the XML files to avoid re-promting
                         xmltime -= wxTimeSpan(0, 0, 3, 0);  //subtract 2 seconds as FAT time resolution is 2 seconds
                         asfn.SetTimes(&xmltime, &xmltime, &xmltime);
@@ -267,18 +268,18 @@ wxString xLightsFrame::LoadEffectsFileNoCheck()
 
     mBackgroundImage = FixFile(GetShowDirectory(), GetXmlSetting("backgroundImage", ""));
     ObtainAccessToURL(mBackgroundImage.ToStdString());
-    if (mBackgroundImage != "" && (!wxFileExists(mBackgroundImage) || !wxIsReadable(mBackgroundImage))) {
+    if (mBackgroundImage != "" && (!FileExists(mBackgroundImage) || !wxIsReadable(mBackgroundImage))) {
         //image doesn't exist there, lets look for it in media directories
         wxString bgImg = GetXmlSetting("backgroundImage", "");
         for (auto &dir : mediaDirectories) {
             wxString fn = FixFile(dir, bgImg);
             ObtainAccessToURL(fn.ToStdString());
-            if (wxFileExists(fn) && wxIsReadable(fn)) {
+            if (FileExists(fn) && wxIsReadable(fn)) {
                 mBackgroundImage = fn;
                 break;
             }
         }
-        if (!wxFileExists(mBackgroundImage) || !wxIsReadable(mBackgroundImage)) {
+        if (!FileExists(mBackgroundImage) || !wxIsReadable(mBackgroundImage)) {
             wxFileName name(mBackgroundImage);
             name.SetPath(CurrentDir);
             if (name.Exists()) {
@@ -503,11 +504,7 @@ void xLightsFrame::LoadEffectsFile()
     EffectsNode->AddAttribute("version", XLIGHTS_RGBEFFECTS_VERSION);
 
     // Handle upgrade of networks file to the controller/output structure
-    if (_outputManager.ConvertModelStartChannels(ModelsNode))
-    {
-        UnsavedRgbEffectsChanges = true;
-        wxMessageBox("Your setup tab data has been converted to the new controller centric format.\nIf you choose to save either the Controller (Setup) or Layout Tab data it is critical you save both or some of your model start channels will break.\nIf this happens you can either repair them manually or roll back to a backup copy.");
-    }
+    bool converted = _outputManager.ConvertModelStartChannels(ModelsNode);
 
     displayElementsPanel->SetSequenceElementsModelsViews(&_seqData, &_sequenceElements, ModelsNode, ModelGroupsNode, &_sequenceViewManager);
     layoutPanel->ClearUndo();
@@ -524,6 +521,11 @@ void xLightsFrame::LoadEffectsFile()
 
     UpdateLayoutSave();
     UpdateControllerSave();
+
+    if (converted) {
+        UnsavedRgbEffectsChanges = true;
+        wxMessageBox("Your setup tab data has been converted to the new controller centric format.\nIf you choose to save either the Controller (Setup) or Layout Tab data it is critical you save both or some of your model start channels will break.\nIf this happens you can either repair them manually or roll back to a backup copy.");
+    }
 }
 
 void xLightsFrame::LoadPerspectivesMenu(wxXmlNode* perspectivesNode)

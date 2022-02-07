@@ -37,7 +37,6 @@
 #include "LayoutPanel.h"
 #include "ModelPreview.h"
 #include "xLightsMain.h"
-#include "graphics/opengl/DrawGLUtils.h"
 #include "ChannelLayoutDialog.h"
 #include "ControllerConnectionDialog.h"
 #include "ModelGroupPanel.h"
@@ -49,6 +48,7 @@
 #include "models/ModelGroup.h"
 #include "models/ViewObject.h"
 #include "models/RulerObject.h"
+#include "models/CustomModel.h"
 #include "WiringDialog.h"
 #include "ModelDimmingCurveDialog.h"
 #include "UtilFunctions.h"
@@ -63,6 +63,11 @@
 #include "outputs/Output.h"
 #include "cad/ModelToCAD.h"
 #include "LORPreview.h"
+#include "ExternalHooks.h"
+#include "ModelFaceDialog.h"
+#include "ModelStateDialog.h"
+#include "CustomModelDialog.h"
+#include "SubModelsDialog.h"
 
 #include <log4cpp/Category.hh>
 
@@ -428,6 +433,8 @@ LayoutPanel::LayoutPanel(wxWindow* parent, xLightsFrame *xl, wxPanel* sequencer)
         modelPreview->Connect(wxEVT_GESTURE_ROTATE, (wxObjectEventFunction)&LayoutPanel::OnPreviewRotateGesture, nullptr, this);
         modelPreview->Connect(wxEVT_GESTURE_ZOOM, (wxObjectEventFunction)&LayoutPanel::OnPreviewZoomGesture, nullptr, this);
     }
+    modelPreview->Connect(EVT_MOTION3D, (wxObjectEventFunction)&LayoutPanel::OnPreviewMotion3D, nullptr, this);
+    modelPreview->Connect(EVT_MOTION3D_BUTTONCLICKED, (wxObjectEventFunction)&LayoutPanel::OnPreviewMotion3DButtonEvent, nullptr, this);
 
     propertyEditor = new wxPropertyGrid(ModelSplitter,
                                         wxID_ANY, // id
@@ -2232,7 +2239,7 @@ public:
             lastFileName = fn;
             delete m_pImage;
             m_pImage = nullptr;
-            if (fn.Exists()) {
+            if (FileExists(fn)) {
                 m_pImage = new wxImage(fn.GetFullPath());
             }
         }
@@ -2319,7 +2326,7 @@ void LayoutPanel::showBackgroundProperties()
 
     if (background == nullptr) {
         backgroundFile = previewBackgroundFile;
-        if (backgroundFile != "" && wxFileExists(backgroundFile) && wxIsReadable(backgroundFile)) {
+        if (backgroundFile != "" && FileExists(backgroundFile) && wxIsReadable(backgroundFile)) {
             background = new wxImage(backgroundFile);
         }
     }
@@ -2404,6 +2411,10 @@ void LayoutPanel::SelectAllModels()
 void LayoutPanel::SetupPropGrid(BaseObject *base_object) {
 
     if (base_object == nullptr || propertyEditor == nullptr) return;
+    if (dynamic_cast<ModelGroup*>(base_object) != nullptr) {
+        //groups don't use the property grid
+        return;
+    }
 
     if (propertyEditor->GetSelection() != nullptr) {
         _lastSelProp = propertyEditor->GetSelection()->GetName();
@@ -2495,7 +2506,7 @@ void LayoutPanel::SelectBaseObject3D()
                 // I think the selected model might not be a model in some undo situations
                 if (selectedModel != nullptr) {
                     selectedModel->GetBaseObjectScreenLocation().SetActiveHandle(CENTER_HANDLE);
-                    selectedModel->GetBaseObjectScreenLocation().SetActiveAxis(-1);
+                    selectedModel->GetBaseObjectScreenLocation().SetActiveAxis(ModelScreenLocation::MSLAXIS::NO_AXIS);
                 }
             }
             else {
@@ -2503,7 +2514,7 @@ void LayoutPanel::SelectBaseObject3D()
                 // I think the selected model might not be a view object in some undo situations
                 if (selectedViewObject != nullptr) {
                     selectedViewObject->GetObjectScreenLocation().SetActiveHandle(CENTER_HANDLE);
-                    selectedViewObject->GetObjectScreenLocation().SetActiveAxis(-1);
+                    selectedViewObject->GetObjectScreenLocation().SetActiveAxis(ModelScreenLocation::MSLAXIS::NO_AXIS);
                 }
             }
             highlightedBaseObject = selectedBaseObject;
@@ -3053,7 +3064,7 @@ void LayoutPanel::ProcessLeftMouseClick3D(wxMouseEvent& event)
                     // an axis was selected
                     if (selectedBaseObject != nullptr) {
                         int active_handle = selectedBaseObject->GetBaseObjectScreenLocation().GetActiveHandle();
-                        selectedBaseObject->GetBaseObjectScreenLocation().SetActiveAxis(m_over_handle & 0xff);
+                        selectedBaseObject->GetBaseObjectScreenLocation().SetActiveAxis((ModelScreenLocation::MSLAXIS)(m_over_handle & 0xff));
                         selectedBaseObject->GetBaseObjectScreenLocation().MouseOverHandle(-1);
                         bool z_scale = selectedBaseObject->GetBaseObjectScreenLocation().GetSupportsZScaling();
                         // this is designed to pretend the control and shift keys are down when creating models to
@@ -3409,7 +3420,7 @@ void LayoutPanel::OnPreviewLeftUp(wxMouseEvent& event)
 
     if (is_3d && m_mouse_down) {
         if (selectedBaseObject != nullptr) {
-            selectedBaseObject->GetBaseObjectScreenLocation().SetActiveAxis(-1);
+            selectedBaseObject->GetBaseObjectScreenLocation().SetActiveAxis(ModelScreenLocation::MSLAXIS::NO_AXIS);
             xlights->GetOutputModelManager()->AddASAPWork(OutputModelManager::WORK_REDRAW_LAYOUTPREVIEW, "LayoutPanel::OnPreviewLeftDown");
         }
         modelPreview->SetCameraView(0, 0, true);
@@ -3610,6 +3621,70 @@ void LayoutPanel::OnPreviewMouseWheelUp(wxMouseEvent& event)
 {
     m_wheel_down = false;
 }
+void LayoutPanel::OnPreviewMotion3DButtonEvent(wxCommandEvent &event) {
+    
+    if (event.GetString() == "BUTTON_MENU") {
+        wxMouseEvent evt;
+        OnPreviewRightDown(evt);
+    } else {
+        modelPreview->OnMotion3DButtonEvent(event);
+        /*
+        int gSize = selectedTreeGroups.size();
+        int smSize = selectedTreeSubModels.size();
+        if (selectedBaseObject != nullptr && gSize == 0 && smSize == 0) {
+        } else {
+        }
+        */
+    }
+}
+
+void LayoutPanel::OnPreviewMotion3D(Motion3DEvent &event) {
+    int gSize = selectedTreeGroups.size();
+    int smSize = selectedTreeSubModels.size();
+    if (selectedBaseObject != nullptr && gSize == 0 && smSize == 0) {
+        int active_handle = selectedBaseObject->GetBaseObjectScreenLocation().GetActiveHandle();
+        CreateUndoPoint(editing_models ? "SingleModel" : "SingleObject", selectedBaseObject->name, std::to_string(active_handle));
+        xlights->AbortRender();
+
+        float scale = modelPreview->translateToBacking(1.0) * 20.0 * modelPreview->GetZoom(); //20 pixels at max speed, default zoom
+        if (!modelPreview->Is3D()) {
+            //moving/rotating the entire model
+            constexpr float rscale = 10; //10 degrees per full 1.0 aka: max speed
+            selectedBaseObject->Rotate(ModelScreenLocation::MSLAXIS::X_AXIS, event.rotations.x * rscale);
+            selectedBaseObject->Rotate(ModelScreenLocation::MSLAXIS::Y_AXIS, -event.rotations.z * rscale);
+            selectedBaseObject->Rotate(ModelScreenLocation::MSLAXIS::Z_AXIS, event.rotations.y * rscale);
+
+            selectedBaseObject->AddOffset(event.translations.x * scale,
+                                          -event.translations.z * scale - event.translations.y * scale,
+                                          0.0f);
+
+            last_centerpos = selectedBaseObject->GetBaseObjectScreenLocation().GetCenterPosition();
+            last_worldrotate = selectedBaseObject->GetBaseObjectScreenLocation().GetRotationAngles();
+            last_worldscale = selectedBaseObject->GetBaseObjectScreenLocation().GetScaleMatrix();
+            selectedBaseObject->UpdateXmlWithScale();
+
+            SetupPropGrid(selectedBaseObject);
+            xlights->GetOutputModelManager()->AddASAPWork(OutputModelManager::WORK_RGBEFFECTS_CHANGE, "LayoutPanel::OnPreviewMotion3D");
+            xlights->GetOutputModelManager()->AddASAPWork(OutputModelManager::WORK_MODELS_CHANGE_REQUIRING_RERENDER, "LayoutPanel::OnPreviewMotion3D");
+            xlights->GetOutputModelManager()->AddASAPWork(OutputModelManager::WORK_REDRAW_LAYOUTPREVIEW, "LayoutPanel::OnPreviewMotion3D");
+        } else if (modelPreview->Is3D()) {
+            selectedBaseObject->MoveHandle3D(scale, active_handle, event.rotations, event.translations);
+
+            last_centerpos = selectedBaseObject->GetBaseObjectScreenLocation().GetCenterPosition();
+            last_worldrotate = selectedBaseObject->GetBaseObjectScreenLocation().GetRotationAngles();
+            last_worldscale = selectedBaseObject->GetBaseObjectScreenLocation().GetScaleMatrix();
+            selectedBaseObject->UpdateXmlWithScale();
+            
+            SetupPropGrid(selectedBaseObject);
+            xlights->GetOutputModelManager()->AddASAPWork(OutputModelManager::WORK_RGBEFFECTS_CHANGE, "LayoutPanel::OnPreviewMotion3D");
+            xlights->GetOutputModelManager()->AddASAPWork(OutputModelManager::WORK_MODELS_CHANGE_REQUIRING_RERENDER, "LayoutPanel::OnPreviewMotion3D");
+            xlights->GetOutputModelManager()->AddASAPWork(OutputModelManager::WORK_REDRAW_LAYOUTPREVIEW, "LayoutPanel::OnPreviewMotion3D");
+        }
+    } else {
+        modelPreview->OnMotion3DEvent(event);
+    }
+}
+
 void LayoutPanel::OnPreviewRotateGesture(wxRotateGestureEvent& event) {
     if (!rotate_gesture_active && !event.IsGestureStart()) {
         return;
@@ -3619,8 +3694,11 @@ void LayoutPanel::OnPreviewRotateGesture(wxRotateGestureEvent& event) {
     } else if (event.IsGestureStart()) {
         rotate_gesture_active = true;
     }
-    if (selectedBaseObject != nullptr) {
-        //rotate model
+    int gSize = selectedTreeGroups.size();
+    int smSize = selectedTreeSubModels.size();
+    
+    if (selectedBaseObject != nullptr && gSize == 0 && smSize == 0) {
+        //groups and submodels shouldn't rotate
         float delta = (m_last_mouse_x - (event.GetRotationAngle() * 1000)) / 1000.0;
         if (!event.IsGestureStart()) {
             //convert to degrees
@@ -3632,11 +3710,11 @@ void LayoutPanel::OnPreviewRotateGesture(wxRotateGestureEvent& event) {
                 delta += 360;
             }
 
-            int axis = 2;  //default is around z axis
+            ModelScreenLocation::MSLAXIS axis = ModelScreenLocation::MSLAXIS::Z_AXIS; //default is around z axis
             if (wxGetKeyState(WXK_SHIFT)) {
-                axis = 0;
+                axis = ModelScreenLocation::MSLAXIS::X_AXIS;
             } else if (wxGetKeyState(WXK_CONTROL)) {
-                axis = 1;
+                axis = ModelScreenLocation::MSLAXIS::Y_AXIS;
             }
             if (selectedBaseObject->Rotate(axis, delta)) {
                 SetupPropGrid(selectedBaseObject);
@@ -3661,7 +3739,12 @@ void LayoutPanel::OnPreviewZoomGesture(wxZoomGestureEvent& event) {
         zoom_gesture_active = true;
     }
     float delta = (m_last_mouse_x - (event.GetZoomFactor() * 1000)) / 1000.0;
-    if (selectedBaseObject != nullptr) {
+    
+    int gSize = selectedTreeGroups.size();
+    int smSize = selectedTreeSubModels.size();
+    
+    if (selectedBaseObject != nullptr && gSize == 0 && smSize == 0) {
+        //groups and submodels shouldn't resize/scale
         if (!event.IsGestureStart()) {
             //resize model
             if (selectedBaseObject->Scale(glm::vec3(1.0f - delta))) {
@@ -3861,7 +3944,7 @@ void LayoutPanel::OnPreviewMouseMove3D(wxMouseEvent& event)
                     CreateUndoPoint(editing_models ? "SingleModel" : "SingleObject", selectedBaseObject->name, std::to_string(active_handle));
                 }
                 bool z_scale = selectedBaseObject->GetBaseObjectScreenLocation().GetSupportsZScaling();
-                if (selectedBaseObject->GetBaseObjectScreenLocation().GetAxisTool() == TOOL_ROTATE) {
+                if (selectedBaseObject->GetBaseObjectScreenLocation().GetAxisTool() == ModelScreenLocation::MSLTOOL::TOOL_ROTATE) {
                     SetMouseStateForModels(true);
                 }
                 // this is designed to pretend the control and shift keys are down when creating models to
@@ -3875,7 +3958,7 @@ void LayoutPanel::OnPreviewMouseMove3D(wxMouseEvent& event)
                 //xlights->GetOutputModelManager()->AddASAPWork(OutputModelManager::WORK_RGBEFFECTS_CHANGE, "LayoutPanel::OnPreviewMouseMove3D");
                 //xlights->GetOutputModelManager()->AddASAPWork(OutputModelManager::WORK_MODELS_CHANGE_REQUIRING_RERENDER, "LayoutPanel::OnPreviewMouseMove3D");
                 if (selectedModelCnt > 1 || selectedViewObjectCnt > 1) {
-                    if( selectedBaseObject->GetBaseObjectScreenLocation().GetAxisTool() == TOOL_TRANSLATE ) {
+                    if (selectedBaseObject->GetBaseObjectScreenLocation().GetAxisTool() == ModelScreenLocation::MSLTOOL::TOOL_TRANSLATE) {
                         glm::vec3 new_centerpos = selectedBaseObject->GetBaseObjectScreenLocation().GetCenterPosition();
                         glm::vec3 pos_offset = new_centerpos - last_centerpos;
                         for (size_t i = 0; i < modelPreview->GetModels().size(); i++)
@@ -3895,8 +3978,7 @@ void LayoutPanel::OnPreviewMouseMove3D(wxMouseEvent& event)
                             }
                         }
                         last_centerpos = new_centerpos;
-                    }
-                    else if( selectedBaseObject->GetBaseObjectScreenLocation().GetAxisTool() == TOOL_ROTATE ) {
+                    } else if (selectedBaseObject->GetBaseObjectScreenLocation().GetAxisTool() == ModelScreenLocation::MSLTOOL::TOOL_ROTATE) {
                         glm::vec3 new_worldrotate = selectedBaseObject->GetBaseObjectScreenLocation().GetRotationAngles();
                         glm::vec3 rotate_offset = new_worldrotate - last_worldrotate;
                         glm::vec3 active_handle_position = selectedBaseObject->GetBaseObjectScreenLocation().GetActiveHandlePosition();
@@ -3926,7 +4008,7 @@ void LayoutPanel::OnPreviewMouseMove3D(wxMouseEvent& event)
                         }
                         last_worldrotate = new_worldrotate;
                     }
-                    if (selectedBaseObject->GetBaseObjectScreenLocation().GetAxisTool() == TOOL_SCALE) {
+                    if (selectedBaseObject->GetBaseObjectScreenLocation().GetAxisTool() == ModelScreenLocation::MSLTOOL::TOOL_SCALE) {
                         glm::vec3 new_worldscale = selectedBaseObject->GetBaseObjectScreenLocation().GetScaleMatrix();
                         if (last_worldscale.x == 0 || last_worldscale.y == 0 || last_worldscale.z == 0) {
                             logger_base.crit("This is not going to end well last_world_scale has a zero parameter and we are about to divide using it.");
@@ -4055,8 +4137,7 @@ void LayoutPanel::OnPreviewMouseMove3D(wxMouseEvent& event)
                     selectedBaseObject->GetBaseObjectScreenLocation().MouseOverHandle(m_over_handle);
                     over_handle = m_over_handle;
                     xlights->GetOutputModelManager()->AddASAPWork(OutputModelManager::WORK_REDRAW_LAYOUTPREVIEW, "LayoutPanel::OnPreviewMouseMove3D");
-                }
-                else if( event.ControlDown() ) {
+                } else if( event.ControlDown() ) {
                     // For now require control to be active before we start highlighting other models while a model is selected otherwise
                     // it gets hard to work on selected model with everything else highlighting.
                     // See if hovering over a model and if so highlight it or remove highlight as you leave it if it wasn't selected.
@@ -4843,6 +4924,75 @@ void LayoutPanel::PreviewModelAlignWithGround()
     xlights->GetOutputModelManager()->AddASAPWork(OutputModelManager::WORK_REDRAW_LAYOUTPREVIEW, "LayoutPanel::PreviewModelAlignWithGround");
 
     ReselectTreeModels(selectedModelPaths);
+}
+
+void LayoutPanel::EditSubmodels()
+{
+    Model* md = dynamic_cast<Model*>(selectedBaseObject);
+    if (md == nullptr || md->GetDisplayAs() == "ModelGoup" || md->GetDisplayAs() == "SubModel")
+        return;
+
+    SubModelsDialog dlg(this);
+    dlg.Setup(md);
+    if (dlg.ShowModal() == wxID_OK) {
+        dlg.Save();
+    }
+    if (dlg.ReloadLayout) { //force grid to reload
+        wxCommandEvent eventForceRefresh(EVT_FORCE_SEQUENCER_REFRESH);
+        wxPostEvent(md->GetModelManager().GetXLightsFrame(), eventForceRefresh);
+        md->AddASAPWork(OutputModelManager::WORK_RELOAD_ALLMODELS, "Model::SubModelsDialog::SubModels");
+        md->AddASAPWork(OutputModelManager::WORK_MODELS_CHANGE_REQUIRING_RERENDER, "Model::SubModelsDialog::SubModels");
+        md->AddASAPWork(OutputModelManager::WORK_RGBEFFECTS_CHANGE, "Model::SubModelsDialog::SubModels");
+    }
+}
+
+void LayoutPanel::EditFaces()
+{
+    Model* md = dynamic_cast<Model*>(selectedBaseObject);
+    if (md == nullptr || md->GetDisplayAs() == "ModelGoup" || md->GetDisplayAs() == "SubModel")
+        return;
+
+    ModelFaceDialog dlg(this);
+    dlg.SetFaceInfo(md, md->faceInfo);
+    if (dlg.ShowModal() == wxID_OK) {
+        md->faceInfo.clear();
+        dlg.GetFaceInfo(md->faceInfo);
+    }
+}
+
+void LayoutPanel::EditStates()
+{
+    Model* md = dynamic_cast<Model*>(selectedBaseObject);
+    if (md == nullptr || md->GetDisplayAs() == "ModelGoup" || md->GetDisplayAs() == "SubModel")
+        return;
+
+    ModelStateDialog dlg(this);
+    dlg.SetStateInfo(md, md->stateInfo);
+    if (dlg.ShowModal() == wxID_OK) {
+        md->stateInfo.clear();
+        dlg.GetStateInfo(md->stateInfo);
+    }
+}
+
+void LayoutPanel::EditModelData()
+{
+    CustomModel* md = dynamic_cast<CustomModel*>(selectedBaseObject);
+    if (md == nullptr || md->GetDisplayAs() != "Custom")
+        return;
+
+    md->SaveDisplayDimensions();
+    auto oldAutoSave = md->GetModelManager().GetXLightsFrame()->_suspendAutoSave;
+    md->GetModelManager().GetXLightsFrame()->_suspendAutoSave = true; // because we will tamper with model we need to suspend autosave
+    CustomModelDialog dlg(this);
+    dlg.Setup(md);
+    if (dlg.ShowModal() == wxID_OK) {
+        dlg.Save(md);
+        md->RestoreDisplayDimensions();
+    } else {
+        md->RestoreDisplayDimensions();
+        md->GetModelManager().GetXLightsFrame()->GetOutputModelManager()->AddASAPWork(OutputModelManager::WORK_REDRAW_LAYOUTPREVIEW, "CustomModel::CancelCustomData");
+    }
+    md->GetModelManager().GetXLightsFrame()->_suspendAutoSave = oldAutoSave;
 }
 
 void LayoutPanel::ShowNodeLayout()
@@ -6407,6 +6557,10 @@ void LayoutPanel::ReplaceModel()
                 modelToReplaceItWith->SetControllerProtocol(replaceModel->GetControllerProtocol());
                 modelToReplaceItWith->SetControllerPort(replaceModel->GetControllerPort());
                 modelToReplaceItWith->SetControllerName(replaceModel->GetControllerName());
+                modelToReplaceItWith->SetSmartRemote(replaceModel->GetSmartRemote());
+                modelToReplaceItWith->SetSmartRemoteType(replaceModel->GetSmartRemoteType());
+                modelToReplaceItWith->SetSRMaxCascade(replaceModel->GetSRMaxCascade());
+                modelToReplaceItWith->SetSRCascadeOnPort(replaceModel->GetSRCascadeOnPort());
             }
         }
 
@@ -6635,6 +6789,25 @@ void LayoutPanel::DoUndo(wxCommandEvent& event) {
         } else if (undoBuffer[sz].type == "SingleModel") {
             logger_base.debug("LayoutPanel::DoUndo SingleModel");
             Model *m = xlights->AllModels[undoBuffer[sz].model];
+            if (m != nullptr) {
+                wxStringInputStream min(undoBuffer[sz].data);
+                wxXmlDocument mdoc(min);
+
+                wxXmlNode *parent = m->GetModelXml()->GetParent();
+                wxXmlNode *next = m->GetModelXml()->GetNext();
+                parent->RemoveChild(m->GetModelXml());
+
+                delete m->GetModelXml();
+                m->SetFromXml(mdoc.GetRoot());
+                mdoc.DetachRoot();
+                parent->InsertChild(m->GetModelXml(), next);
+                SelectModel(undoBuffer[sz].model);
+                xlights->GetOutputModelManager()->AddASAPWork(OutputModelManager::WORK_RGBEFFECTS_CHANGE, "LayoutPanel::DoUndo");
+                xlights->GetOutputModelManager()->AddASAPWork(OutputModelManager::WORK_MODELS_CHANGE_REQUIRING_RERENDER, "LayoutPanel::DoUndo");
+            }
+        } else if (undoBuffer[sz].type == "SingleObject") {
+            logger_base.debug("LayoutPanel::DoUndo SingleObject");
+            ViewObject *m = xlights->AllObjects[undoBuffer[sz].model];
             if (m != nullptr) {
                 wxStringInputStream min(undoBuffer[sz].data);
                 wxXmlDocument mdoc(min);
@@ -7535,7 +7708,6 @@ void LayoutPanel::PreviewPrintImage()
             mtx.Scale(xScale, yScale);
             dc->SetTransformMatrix(mtx);
             dc->DrawBitmap(*m_image, rect.GetTopLeft());
-
 			return true;
 		}
 
@@ -8184,19 +8356,15 @@ void LayoutPanel::OnCheckBox_3DClick(wxCommandEvent& event)
 {
     is_3d = CheckBox_3D->GetValue();
 
-    if (is_3d)
-    {
-        if (ChoiceLayoutGroups->GetStringSelection() != "Default")
-        {
+    if (is_3d) {
+        if (ChoiceLayoutGroups->GetStringSelection() != "Default") {
             ChoiceLayoutGroups->SetStringSelection("Default");
             wxCommandEvent e;
             OnChoiceLayoutGroupsSelect(e);
         }
         ChoiceLayoutGroups->Disable();
         ChoiceLayoutGroups->SetToolTip("3D is only supported in the Default preview.");
-    }
-    else
-    {
+    } else {
         ChoiceLayoutGroups->Enable();
         ChoiceLayoutGroups->UnsetToolTip();
     }
@@ -8208,14 +8376,17 @@ void LayoutPanel::OnCheckBox_3DClick(wxCommandEvent& event)
             highlightedBaseObject = selectedBaseObject;
             selectedBaseObject->GetBaseObjectScreenLocation().SetActiveHandle(CENTER_HANDLE);
             selectedBaseObject->EnableLayoutGroupProperty(propertyEditor, false);
-        }
-        else {
+        } else {
             UnSelectAllModels();
         }
 	    Notebook_Objects->AddPage(PanelObjects, _("3D Objects"), false);
     } else {
-        if (selectedBaseObject != nullptr) {
-            selectedBaseObject->EnableLayoutGroupProperty(propertyEditor, true);
+        editing_models = true;
+        Model *m = dynamic_cast<Model*>(selectedBaseObject);
+        if (m != nullptr) {
+            m->EnableLayoutGroupProperty(propertyEditor, true);
+        } else {
+            UnSelectAllModels();
         }
         Notebook_Objects->RemovePage(1);
     }
@@ -8270,8 +8441,15 @@ bool LayoutPanel::HandleLayoutKeyBinding(wxKeyEvent& event)
         }
         else if (type == "NODE_LAYOUT") {
             ShowNodeLayout();
-        }
-        else if (type == "SAVE_LAYOUT") {
+        } else if (type == "MODEL_SUBMODELS") {
+            EditSubmodels();
+        } else if (type == "MODEL_FACES") {
+            EditFaces();
+        } else if (type == "MODEL_STATES") {
+            EditStates();
+        } else if (type == "MODEL_MODELDATA") {
+            EditModelData();
+        } else if (type == "SAVE_LAYOUT") {
             SaveEffects();
             if (xlights->IsControllersAndLayoutTabSaveLinked()) {
                 xlights->SaveNetworksFile();

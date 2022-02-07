@@ -179,6 +179,7 @@
 					<Add option="`wx-config --version=3.1 --cflags`" />
 					<Add option="`pkg-config --cflags libavformat libavcodec libavutil  libswresample libswscale`" />
 					<Add option="`pkg-config --cflags gstreamer-1.0 gstreamer-video-1.0`" />
+					<Add option="`pkg-config --cflags lua53`" />
 					<Add option="-Winvalid-pch" />
 					<Add option="-DWX_PRECOMP" />
 					<Add option="-DLINUX" />
@@ -197,6 +198,8 @@
 					<Add directory="outputs" />
 					<Add directory="xLights" />
 					<Add directory="xLights/models" />
+					<Add directory="../dependencies/libxlsxwriter/include" />
+					<Add directory="../include/sol2-3.2.2" />
 				</Compiler>
 				<Linker>
 					<Add option="-lGL -lGLU -lglut -ldl -lX11 -lcurl" />
@@ -205,11 +208,13 @@
 					<Add option="`sdl2-config --libs`" />
 					<Add option="`wx-config --version=3.1 --libs std,media,gl,aui,propgrid`" />
 					<Add option="`pkg-config --libs gstreamer-1.0 gstreamer-video-1.0`" />
+					<Add option="`pkg-config --libs lua53`" />
 					<Add option="-lexpat" />
 					<Add option="-rdynamic" />
 					<Add option="-lz" />
 					<Add option="-lzstd" />
 					<Add library="../lib/linux/libliquidfun.a" />
+					<Add library="../dependencies/libxlsxwriter/lib/libxlsxwriter.a" />
 				</Linker>
 			</Target>
 			<Target title="Linux_Release">
@@ -226,6 +231,7 @@
 					<Add option="`wx-config --version=3.1 --cflags`" />
 					<Add option="`pkg-config --cflags gstreamer-1.0 gstreamer-video-1.0`" />
 					<Add option="`pkg-config --cflags libavformat libavcodec libavutil  libswresample libswscale`" />
+					<Add option="`pkg-config --cflags lua53`" />
 					<Add option="-Winvalid-pch" />
 					<Add option="-DWX_PRECOMP" />
 					<Add option="-DLINUX" />
@@ -244,6 +250,8 @@
 					<Add directory="outputs" />
 					<Add directory="xLights" />
 					<Add directory="xLights/models" />
+					<Add directory="../dependencies/libxlsxwriter/include" />
+					<Add directory="../include/sol2-3.2.2" />
 				</Compiler>
 				<Linker>
 					<Add option="-lGL -lGLU -lglut -ldl -lX11 -lcurl" />
@@ -252,11 +260,13 @@
 					<Add option="`sdl2-config --libs`" />
 					<Add option="`wx-config --version=3.1 --libs std,media,gl,aui,propgrid`" />
 					<Add option="`pkg-config --libs gstreamer-1.0 gstreamer-video-1.0`" />
+					<Add option="`pkg-config --libs lua53`" />
 					<Add option="-lexpat" />
 					<Add option="-rdynamic" />
 					<Add option="-lz" />
 					<Add option="-lzstd" />
 					<Add library="../lib/linux/libliquidfun.a" />
+					<Add library="../dependencies/libxlsxwriter/lib/libxlsxwriter.a" />
 				</Linker>
 			</Target>
 			<Target title="64bit MinGW_Release">
@@ -600,6 +610,8 @@
 		<Unit filename="ModelPreview.h" />
 		<Unit filename="ModelStateDialog.cpp" />
 		<Unit filename="ModelStateDialog.h" />
+		<Unit filename="Mouse3DManager.cpp" />
+		<Unit filename="Mouse3DManager.h" />
 		<Unit filename="MultiControllerUploadDialog.cpp" />
 		<Unit filename="MultiControllerUploadDialog.h" />
 		<Unit filename="MusicXML.cpp" />
@@ -747,6 +759,8 @@
 		<Unit filename="WiringDialog.cpp" />
 		<Unit filename="WiringDialog.h" />
 		<Unit filename="XlightsDrawable.h" />
+		<Unit filename="automation/LuaRunner.cpp" />
+		<Unit filename="automation/LuaRunner.h" />
 		<Unit filename="automation/automation.cpp" />
 		<Unit filename="automation/automation.h" />
 		<Unit filename="automation/xLightsAutomations.cpp" />
@@ -950,6 +964,8 @@
 		<Unit filename="effects/ShockwavePanel.h" />
 		<Unit filename="effects/SingleStrandEffect.cpp" />
 		<Unit filename="effects/SingleStrandEffect.h" />
+		<Unit filename="effects/FX.cpp" />
+		<Unit filename="effects/FX.h" />
 		<Unit filename="effects/SingleStrandPanel.cpp" />
 		<Unit filename="effects/SingleStrandPanel.h" />
 		<Unit filename="effects/SnowflakesEffect.cpp" />
@@ -1035,6 +1051,8 @@
 		<Unit filename="graphics/xlGraphicsAccumulators.h" />
 		<Unit filename="graphics/xlGraphicsBase.h" />
 		<Unit filename="graphics/xlGraphicsContext.h" />
+		<Unit filename="graphics/xlMesh.cpp" />
+		<Unit filename="graphics/xlMesh.h" />
 		<Unit filename="kiss_fft/kiss_fft.c">
 			<Option compilerVar="CC" />
 		</Unit>

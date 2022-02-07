@@ -382,6 +382,100 @@ void DmxSkulltronix::InitModel() {
     SetNodeNames(",,,,,,,Power,Jaw,-Jaw Fine,Nod,-Nod Fine,Pan,-Pan Fine,Eye UD,-Eye UD Fine,Eye LR,-Eye LR Fine,Tilt,-Tilt Fine,-Torso,-Torso Fine,Eye Brightness,Eye Red,Eye Green,Eye Blue");
 }
 
+
+void DmxSkulltronix::DisplayModelOnWindow(ModelPreview* preview, xlGraphicsContext *ctx,
+                                    xlGraphicsProgram *sprogram, xlGraphicsProgram *tprogram, bool is_3d,
+                                    const xlColor* c, bool allowSelected, bool wiring,
+                                    bool highlightFirst, int highlightpixel,
+                                    float *boundingBox) {
+    if (!IsActive()) return;
+
+    screenLocation.PrepareToDraw(is_3d, allowSelected);
+    screenLocation.UpdateBoundingBox(Nodes);
+    
+    
+    sprogram->addStep([=](xlGraphicsContext *ctx) {
+        ctx->PushMatrix();
+        if (!is_3d) {
+            //not 3d, flatten to the 0 plane
+            ctx->Scale(1.0, 1.0, 0.0);
+        }
+        GetModelScreenLocation().ApplyModelViewMatrices(ctx);
+    });
+    tprogram->addStep([=](xlGraphicsContext *ctx) {
+        ctx->PushMatrix();
+        if (!is_3d) {
+            //not 3d, flatten to the 0 plane
+            ctx->Scale(1.0, 1.0, 0.0);
+        }
+        GetModelScreenLocation().ApplyModelViewMatrices(ctx);
+    });
+    DrawModel(preview, ctx, sprogram, tprogram, is_3d, !allowSelected, c);
+    sprogram->addStep([=](xlGraphicsContext *ctx) {
+        ctx->PopMatrix();
+    });
+    tprogram->addStep([=](xlGraphicsContext *ctx) {
+        ctx->PopMatrix();
+    });
+    if ((Selected || (Highlighted && is_3d)) && c != nullptr && allowSelected) {
+        if (is_3d) {
+            GetModelScreenLocation().DrawHandles(tprogram, preview->GetCameraZoomForHandles(), preview->GetHandleScale(), Highlighted);
+        } else {
+            GetModelScreenLocation().DrawHandles(tprogram, preview->GetCameraZoomForHandles(), preview->GetHandleScale());
+        }
+    }
+}
+void DmxSkulltronix::DisplayEffectOnWindow(ModelPreview* preview, double pointSize) {
+    if (!IsActive() && preview->IsNoCurrentModel()) { return; }
+    
+    bool mustEnd = false;
+    xlGraphicsContext *ctx = preview->getCurrentGraphicsContext();
+    if (ctx == nullptr) {
+        bool success = preview->StartDrawing(pointSize);
+        if (success) {
+            ctx = preview->getCurrentGraphicsContext();
+            mustEnd = true;
+        }
+    }
+    if (ctx) {
+        int w, h;
+        preview->GetSize(&w, &h);
+        float scaleX = float(w) * 0.95 / GetModelScreenLocation().RenderWi;
+        float scaleY = float(h) * 0.95 / GetModelScreenLocation().RenderHt;
+        
+        float aspect = screenLocation.GetScaleX();
+        aspect /= screenLocation.GetScaleY();
+        if (scaleY < scaleX) {
+            scaleX = scaleY * aspect;
+        } else {
+            scaleY = scaleX / aspect;
+        }
+        float ml, mb;
+        GetMinScreenXY(ml, mb);
+        ml += GetModelScreenLocation().RenderWi / 2;
+        mb += GetModelScreenLocation().RenderHt / 2;
+        
+        preview->getCurrentTransparentProgram()->addStep([=](xlGraphicsContext *ctx) {
+            ctx->PushMatrix();
+            ctx->Translate(w/2.0f - (ml < 0.0f ? ml : 0.0f),
+                           h/2.0f - (mb < 0.0f ? mb : 0.0f), 0.0f);
+            ctx->Scale(scaleX, scaleY, 1.0);
+        });
+        DrawModel(preview, ctx, preview->getCurrentSolidProgram(), preview->getCurrentTransparentProgram(), false, false, nullptr);
+        preview->getCurrentTransparentProgram()->addStep([=](xlGraphicsContext *ctx) {
+            ctx->PopMatrix();
+        });
+    }
+    if (mustEnd) {
+        preview->EndDrawing();
+    }
+}
+
+void DmxSkulltronix::DrawModel(ModelPreview* preview, xlGraphicsContext *ctx, xlGraphicsProgram *sprogram, xlGraphicsProgram *tprogram, bool is3d, bool active, const xlColor* c) {
+
+}
+
+/*
 void DmxSkulltronix::DrawModelOnWindow(ModelPreview* preview, DrawGLUtils::xlAccumulator &va, const xlColor *c, float &sx, float &sy, bool active)
 {
     if (!IsActive()) return;
@@ -986,7 +1080,7 @@ void DmxSkulltronix::DrawModelOnWindow(ModelPreview* preview, DrawGLUtils::xl3Ac
 
     va.Finish(GL_TRIANGLES);
 }
-
+*/
 void DmxSkulltronix::ExportXlightsModel()
 {
     wxString name = ModelXml->GetAttribute("name");
@@ -994,7 +1088,7 @@ void DmxSkulltronix::ExportXlightsModel()
     wxString filename = wxFileSelector(_("Choose output file"), wxEmptyString, name, wxEmptyString, "Custom Model files (*.xmodel)|*.xmodel", wxFD_SAVE | wxFD_OVERWRITE_PROMPT);
     if (filename.IsEmpty()) return;
     wxFile f(filename);
-    //    bool isnew = !wxFile::Exists(filename);
+    //    bool isnew = !FileExists(filename);
     if (!f.Create(filename, true) || !f.IsOpened()) DisplayError(wxString::Format("Unable to create file %s. Error %d\n", filename, f.GetLastError()).ToStdString());
 
     f.Write("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<dmxmodel \n");

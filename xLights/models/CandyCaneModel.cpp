@@ -196,6 +196,11 @@ int CandyCaneModel::OnPropertyGridChange(wxPropertyGridInterface *grid, wxProper
     return Model::OnPropertyGridChange(grid, event);
 }
 
+bool CandyCaneModel::IsNodeFirst(int n) const
+{
+    return (GetIsLtoR() && n == 0) || (!GetIsLtoR() && n == Nodes.size() - parm2);
+}
+
 std::string CandyCaneModel::GetDimension() const
 {
     if (parm1 != 0) {
@@ -225,7 +230,7 @@ void CandyCaneModel::GetBufferSize(const std::string &type, const std::string &c
 }
 
 void CandyCaneModel::InitRenderBufferNodes(const std::string &type, const std::string &camera,  const std::string &transform,
-                                        std::vector<NodeBaseClassPtr> &newNodes, int &BufferWi, int &BufferHi) const {
+                                        std::vector<NodeBaseClassPtr> &newNodes, int &BufferWi, int &BufferHi, bool deep) const {
     if (type == "Single Line") {
         BufferHi = 1;
         BufferWi = GetNodeCount();

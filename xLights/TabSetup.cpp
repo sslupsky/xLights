@@ -302,7 +302,8 @@ bool xLightsFrame::SetDir(const wxString& newdir, bool permanent) {
     // load network
     networkFile.AssignDir(CurrentDir);
     networkFile.SetFullName(_(XLIGHTS_NETWORK_FILE));
-    if (networkFile.FileExists()) {
+    if (FileExists(networkFile)) {
+        ObtainAccessToURL(networkFile.GetFullPath());
         logger_base.debug("Loading networks.");
         wxStopWatch sww;
         if (!_outputManager.Load(CurrentDir.ToStdString())) {
@@ -340,6 +341,7 @@ bool xLightsFrame::SetDir(const wxString& newdir, bool permanent) {
         font.SetWeight(wxFONTWEIGHT_NORMAL);
         ShowDirectoryLabel->SetFont(font);
         Button_CheckShowFolderTemporarily->SetLabelText("Change Temporarily");
+        Button_ChangeTemporarilyAgain->Hide();
     }
     else {
         ShowDirectoryLabel->SetForegroundColour(wxColor(255, 200, 0));
@@ -347,6 +349,7 @@ bool xLightsFrame::SetDir(const wxString& newdir, bool permanent) {
         font.SetWeight(wxFONTWEIGHT_BOLD);
         ShowDirectoryLabel->SetFont(font);
         Button_CheckShowFolderTemporarily->SetLabelText("Restore to Permanent");
+        Button_ChangeTemporarilyAgain->Show();
     }
     
     // do layout after so button resizes to fit label (only issue on osx, "Restore to Permanent" is cut off)
@@ -397,6 +400,10 @@ void xLightsFrame::OnMenuOpenFolderSelected(wxCommandEvent& event) {
     PromptForShowDirectory(true);
 }
 
+void xLightsFrame::OnButton_ChangeTemporarilyAgainClick(wxCommandEvent& event)
+{
+    PromptForShowDirectory(false);
+}
 
 void xLightsFrame::OnButton_ChangeShowFolderTemporarily(wxCommandEvent& event)
 {
@@ -408,6 +415,7 @@ void xLightsFrame::OnButton_ChangeShowFolderTemporarily(wxCommandEvent& event)
         layoutPanel->ClearUndo();
         wxASSERT(_permanentShowFolder != "");
         SetDir(_permanentShowFolder, true);
+        Button_ChangeTemporarilyAgain->Hide();
     }
 }
 
@@ -416,6 +424,7 @@ bool xLightsFrame::PromptForShowDirectory(bool permanent) {
     wxDirDialog DirDialog1(this, _("Select Show Directory"), wxEmptyString, wxDD_DEFAULT_STYLE, wxDefaultPosition, wxDefaultSize, _T("wxDirDialog"));
 
     while (DirDialog1.ShowModal() == wxID_OK) {
+        bool dirOK = true;
         AbortRender(); // make sure nothing is still rendering
         wxString newdir = DirDialog1.GetPath();
         if (newdir == CurrentDir) return true;
@@ -427,10 +436,24 @@ bool xLightsFrame::PromptForShowDirectory(bool permanent) {
 #ifdef __WXMSW__
         if (ShowFolderIsInProgramFiles(newdir.ToStdString())) {
             DisplayWarning("ERROR: Show folder inside your Program Files folder either just wont work or will cause you security issues ... so please choose again.", this);
+            dirOK = false;
         }
-        else
 #endif
-        {
+        if (dirOK) {
+            wxString fn;
+            // if new directory contains a networks or rgbeffects file then ok
+            if (FileExists(newdir + wxFileName::GetPathSeparator() + XLIGHTS_NETWORK_FILE) || FileExists(newdir + wxFileName::GetPathSeparator() + XLIGHTS_RGBEFFECTS_FILE)) {
+            }
+            // if new directory is empty then ok
+            else if (!wxDir(newdir).GetFirst(&fn)) {
+            }
+            // otherwise ... this may not be a show directory ... check the user is sure about this
+            else if (wxMessageBox("Folder chosen does not contain xLights show folder files and is not empty. Are you sure you chose the right folder?", "Possibly incorrect folder chosen.", wxYES_NO, this) == wxNO) {
+                dirOK = false;
+            }
+        }
+
+        if (dirOK) {
             displayElementsPanel->SetSequenceElementsModelsViews(nullptr, nullptr, nullptr, nullptr, nullptr);
             layoutPanel->ClearUndo();
             return SetDir(newdir, permanent);

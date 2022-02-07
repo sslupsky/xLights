@@ -229,7 +229,7 @@ void ArchesModel::GetBufferSize(const std::string &type, const std::string &came
     }
 }
 void ArchesModel::InitRenderBufferNodes(const std::string& type, const std::string& camera, const std::string& transform,
-    std::vector<NodeBaseClassPtr>& newNodes, int& BufferWi, int& BufferHi) const
+    std::vector<NodeBaseClassPtr>& newNodes, int& BufferWi, int& BufferHi, bool deep) const
 {
     if (type == "Single Line") {
         BufferHi = 1;
@@ -248,6 +248,16 @@ void ArchesModel::InitRenderBufferNodes(const std::string& type, const std::stri
         ApplyTransform(transform, newNodes, BufferWi, BufferHi);
     } else {
         Model::InitRenderBufferNodes(type, camera, transform, newNodes, BufferWi, BufferHi);
+    }
+}
+
+bool ArchesModel::IsNodeFirst(int n) const 
+{
+    if (GetLayerSizeCount() == 0) {
+        return (GetIsLtoR() && n == 0) || (!GetIsLtoR() && n == Nodes.size() - 1);
+    }
+    else {
+        return n == 0;
     }
 }
 
@@ -500,7 +510,7 @@ void ArchesModel::ExportXlightsModel()
     wxString filename = wxFileSelector(_("Choose output file"), wxEmptyString, name, wxEmptyString, "Custom Model files (*.xmodel)|*.xmodel", wxFD_SAVE | wxFD_OVERWRITE_PROMPT);
     if (filename.IsEmpty()) return;
     wxFile f(filename);
-    //    bool isnew = !wxFile::Exists(filename);
+    //    bool isnew = !FileExists(filename);
     if (!f.Create(filename, true) || !f.IsOpened()) DisplayError(wxString::Format("Unable to create file %s. Error %d\n", filename, f.GetLastError()).ToStdString());
     wxString p1 = ModelXml->GetAttribute("parm1");
     wxString p2 = ModelXml->GetAttribute("parm2");

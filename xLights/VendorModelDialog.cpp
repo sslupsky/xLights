@@ -26,6 +26,7 @@
 
 #include "CachedFileDownloader.h"
 #include "UtilFunctions.h"
+#include "ExternalHooks.h"
 
 CachedFileDownloader VendorModelDialog::_cache;
 
@@ -291,23 +292,30 @@ public:
 
 void MModelWiring::DownloadXModel()
 {
-    if (!_xmodelFile.Exists()) {
-        _xmodelFile = VendorModelDialog::GetCache().GetFile(_xmodelLink, CACHEFOR::CACHETIME_LONG, "xmodel");
+    if (!FileExists(_xmodelFile)) {
+        std::string ext = "xmodel";
+        if (_xmodelLink.GetPath().Lower().EndsWith("zip")) {
+            ext = "zip";
+        }
+        
+        _xmodelFile = VendorModelDialog::GetCache().GetFile(_xmodelLink, CACHEFOR::CACHETIME_LONG, ext);
 
-        wxXmlDocument d;
-        d.Load(_xmodelFile.GetFullPath());
-        if (d.IsOk()) {
-            wxXmlNode* root = d.GetRoot();
-            if (root->GetAttribute("PixelType", "") == "" && _model->_pixelDescription != "") {
-                root->AddAttribute("PixelType", _model->_pixelDescription);
+        if (ext == "xmodel") {
+            wxXmlDocument d;
+            d.Load(_xmodelFile.GetFullPath());
+            if (d.IsOk()) {
+                wxXmlNode* root = d.GetRoot();
+                if (root->GetAttribute("PixelType", "") == "" && _model->_pixelDescription != "") {
+                    root->AddAttribute("PixelType", _model->_pixelDescription);
+                }
+                if (root->GetAttribute("PixelMinimumSpacingInches", "") == "" && wxAtoi(_model->_pixelSpacing) != 0) {
+                    root->AddAttribute("PixelMinimumSpacingInches", wxString::Format("%d", wxAtoi(_model->_pixelSpacing)));
+                }
+                if (root->GetAttribute("PixelCount", "") == "" && wxAtoi(_model->_pixelCount) != 0) {
+                    root->AddAttribute("PixelCount", wxString::Format("%d", wxAtoi(_model->_pixelCount)));
+                }
+                d.Save(_xmodelFile.GetFullPath());
             }
-            if (root->GetAttribute("PixelMinimumSpacingInches", "") == "" && wxAtoi(_model->_pixelSpacing) != 0) {
-                root->AddAttribute("PixelMinimumSpacingInches", wxString::Format("%d", wxAtoi(_model->_pixelSpacing)));
-            }
-            if (root->GetAttribute("PixelCount", "") == "" && wxAtoi(_model->_pixelCount) != 0) {
-                root->AddAttribute("PixelCount", wxString::Format("%d", wxAtoi(_model->_pixelCount)));
-            }
-            d.Save(_xmodelFile.GetFullPath());
         }
     }
 }
@@ -845,7 +853,7 @@ wxXmlDocument* VendorModelDialog::GetXMLFromURL(wxURI url, std::string& filename
 {
     filename = "";
     wxFileName fn = wxFileName(VendorModelDialog::GetCache().GetFile(url, CACHEFOR::CACHETIME_SESSION, "", prog, low, high));
-    if (fn.Exists()) {
+    if (FileExists(fn)) {
         filename = fn.GetFullPath();
         return new wxXmlDocument(filename);
     }
@@ -1142,7 +1150,7 @@ void VendorModelDialog::DownloadModel(MModelWiring* wiring)
                         _modelFile = file;
                     }
 
-                    if (!wxFile::Exists(file)) {
+                    if (!FileExists(file)) {
                         logger_base.debug("        model file " + file + " downloaded.");
                         wxFileOutputStream fout(file);
                         zin.Read(fout);
@@ -1393,7 +1401,7 @@ void VendorModelDialog::PopulateVendorPanel(MVendor* vendor)
 
     CheckBox_DontDownload->SetValue(IsVendorSuppressed(vendor->_name));
 
-    if (vendor->_logoFile.Exists())
+    if (FileExists(vendor->_logoFile))
     {
         _vendorImage.LoadFile(vendor->_logoFile.GetFullPath());
         if (_vendorImage.IsOk())
@@ -1460,7 +1468,7 @@ void VendorModelDialog::LoadModelImage(std::list<wxFileName> imageFiles, int ima
     {
         ++it;
     }
-    if (it->Exists())
+    if (FileExists(*it))
     {
         _modelImage.LoadFile(it->GetFullPath());
         if (_modelImage.IsOk())

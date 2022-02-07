@@ -21,7 +21,7 @@
 #include "../xLightsVersion.h"
 #include "outputs/Controller.h"
 #include "UtilFunctions.h"
-#include "ExternalHooks.h"
+#include "../ExternalHooks.h"
 #include "outputs/OutputManager.h"
 #include "../ModelPreview.h"
 
@@ -335,7 +335,9 @@ void CustomModel::InitModel()
     if (_depth < 1) _depth = 1;
 
     screenLocation.SetRenderSize(parm1, parm2, _depth);
-    screenLocation.SetPerspective2D(0.1f); // if i dont do this you cant see the back nodes in 2D
+    if (_depth > 1) {
+        screenLocation.SetPerspective2D(0.1f); // if i dont do this you cant see the back nodes in 2D
+    }
 }
 
 void CustomModel::SetCustomWidth(long w)
@@ -395,7 +397,7 @@ void CustomModel::SetCustomLightness(long lightness)
 bool CustomModel::CleanupFileLocations(xLightsFrame* frame)
 {
     bool rc = false;
-    if (wxFile::Exists(custom_background)) {
+    if (FileExists(custom_background)) {
         if (!frame->IsInShowFolder(custom_background)) {
             custom_background = frame->MoveToShowFolder(custom_background, wxString(wxFileName::GetPathSeparator()) + "Images");
             ModelXml->DeleteAttribute("CustomBkgImage");
@@ -411,7 +413,7 @@ bool CustomModel::CleanupFileLocations(xLightsFrame* frame)
 std::list<std::string> CustomModel::GetFileReferences()
 {
     std::list<std::string> res;
-    if (wxFile::Exists(custom_background)) {
+    if (FileExists(custom_background)) {
         res.push_back(custom_background);
     }
     return res;
@@ -572,7 +574,7 @@ void CustomModel::GetBufferSize(const std::string& type, const std::string& came
     AdjustForTransform(transform, BufferWi, BufferHi);
 }
 
-void CustomModel::InitRenderBufferNodes(const std::string& type, const std::string& camera, const std::string& transform, std::vector<NodeBaseClassPtr>& Nodes, int& BufferWi, int& BufferHi) const
+void CustomModel::InitRenderBufferNodes(const std::string& type, const std::string& camera, const std::string& transform, std::vector<NodeBaseClassPtr>& Nodes, int& BufferWi, int& BufferHi, bool deep) const
 {
     int width = parm1;
     int height = parm2;
@@ -1451,7 +1453,7 @@ void CustomModel::ExportXlightsModel()
     wxString filename = wxFileSelector(_("Choose output file"), wxEmptyString, name, wxEmptyString, "Custom Model files (*.xmodel)|*.xmodel", wxFD_SAVE | wxFD_OVERWRITE_PROMPT);
     if (filename.IsEmpty()) return;
     wxFile f(filename);
-    //    bool isnew = !wxFile::Exists(filename);
+    //    bool isnew = !FileExists(filename);
     if (!f.Create(filename, true) || !f.IsOpened()) DisplayError(wxString::Format("Unable to create file %s. Error %d\n", filename, f.GetLastError()).ToStdString());
     wxString cm = ModelXml->GetAttribute("CustomModel");
     wxString p1 = ModelXml->GetAttribute("parm1");

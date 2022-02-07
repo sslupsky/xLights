@@ -85,9 +85,11 @@ void VideoReader::InitHWAcceleration() {
     InitVideoToolboxAcceleration();
 }
 
-VideoReader::VideoReader(const std::string& filename, int maxwidth, int maxheight, bool keepaspectratio, bool usenativeresolution/*false*/, bool wantAlpha, bool bgr)
+VideoReader::VideoReader(const std::string& filename, int maxwidth, int maxheight, bool keepaspectratio, bool usenativeresolution/*false*/,
+                         bool wantAlpha, bool bgr, bool wantsHWType)
 {
     static log4cpp::Category &logger_base = log4cpp::Category::getInstance(std::string("log_base"));
+    _wantsHWType = wantsHWType;
     _maxwidth = maxwidth;
     _maxheight = maxheight;
     _filename = filename;
@@ -128,7 +130,13 @@ VideoReader::VideoReader(const std::string& filename, int maxwidth, int maxheigh
 	}
 
 	// Find the video stream
-	_streamIndex = av_find_best_stream(_formatContext, AVMEDIA_TYPE_VIDEO, -1, -1, &_decoder, 0);
+#if LIBAVFORMAT_VERSION_MAJOR >= 59
+    _streamIndex = av_find_best_stream(_formatContext, AVMEDIA_TYPE_VIDEO, -1, -1, &_decoder, 0);
+#else
+    AVCodec* decoder = nullptr;
+	_streamIndex = av_find_best_stream(_formatContext, AVMEDIA_TYPE_VIDEO, -1, -1, &decoder, 0);
+    _decoder = decoder;
+#endif
 	if (_streamIndex < 0) {
         logger_base.error("VideoReader: Could not find any video stream in " + filename);
 		return;
@@ -471,10 +479,8 @@ long VideoReader::GetVideoLength(const std::string& filename)
     }
 
     // Find the video stream
-    AVCodec* cdc;
-    int streamIndex = av_find_best_stream(formatContext, AVMEDIA_TYPE_VIDEO, -1, -1, &cdc, 0);
-    if (streamIndex < 0)
-    {
+    int streamIndex = av_find_best_stream(formatContext, AVMEDIA_TYPE_VIDEO, -1, -1, nullptr, 0);
+    if (streamIndex < 0) {
         avformat_close_input(&formatContext);
         return 0;
     }
@@ -651,7 +657,12 @@ bool VideoReader::readFrame(int timestampMS) {
             #endif
             bool hardwareScaled = false;
             if (IsVideoToolboxAcceleratedFrame(_srcFrame)) {
-                hardwareScaled = VideoToolboxScaleImage(_codecContext, _srcFrame, _dstFrame2, hwDecoderCache);
+                if (_wantsHWType) {
+                    hardwareScaled = true;
+                    std::swap(_dstFrame2, _srcFrame);
+                } else {
+                    hardwareScaled = VideoToolboxScaleImage(_codecContext, _srcFrame, _dstFrame2, hwDecoderCache);
+                }
             }
 
             if (!hardwareScaled) {

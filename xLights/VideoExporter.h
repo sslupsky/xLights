@@ -26,6 +26,8 @@ extern "C"
 
 class wxWindow;
 
+#define MAX_EXPORT_BUFFER_FRAMES 20
+
 class GenericVideoExporter
 {
 public:
@@ -39,7 +41,7 @@ public:
    };
 
    // Callbacks provide the video and audio for each frame
-   typedef std::function< bool( uint8_t* /*buf*/, int/*bufSize*/, unsigned /*frameIndex*/ ) > GetVideoFrameCb;
+   typedef std::function< bool( AVFrame * ,uint8_t* /*buf*/, int/*bufSize*/, unsigned /*frameIndex*/ ) > GetVideoFrameCb;
    typedef std::function< bool( float* /*leftCh*/, float* /*rightCh*/, int /*frameSize*/ ) > GetAudioFrameCb;
 
    // Callback to allow the exporter to query the client on whether to abort the export
@@ -75,8 +77,8 @@ protected:
    void cleanup();
 
    const std::string       _path;
-   const Params            _inParams;
    const bool              _videoOnly;
+   Params                  _inParams;
    Params                  _outParams;
    int64_t                 _ptsIncrement = 0LL;
    SwsContext*             _swsContext = nullptr;
@@ -84,7 +86,7 @@ protected:
    AVCodecContext*         _videoCodecContext = nullptr;
    AVCodecContext*         _audioCodecContext = nullptr;
    AVFrame*                _colorConversionFrame = nullptr;
-   AVFrame*                _videoFrame = nullptr;
+   AVFrame*                _videoFrames[MAX_EXPORT_BUFFER_FRAMES];
    AVFrame*                _audioFrame = nullptr;
    AVPacket*               _videoPacket = nullptr;
    AVPacket*               _audioPacket = nullptr;
@@ -92,6 +94,8 @@ protected:
    GetAudioFrameCb         _getAudio = nullptr;
    QueryForCancelCb        _queryForCancel = nullptr;
    ProgressReportCb        _progressReporter = nullptr;
+   uint32_t                _curVideoFrame = 0;
+   int64_t                 _curPts = 0LL;
 };
 
 class VideoExporter : public GenericVideoExporter

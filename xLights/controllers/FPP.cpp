@@ -50,6 +50,7 @@
 #include "../xLightsVersion.h"
 #include "../Parallel.h"
 #include "ControllerCaps.h"
+#include "../ExternalHooks.h"
 
 #include <log4cpp/Category.hh>
 #include "ControllerUploadData.h"
@@ -613,7 +614,7 @@ static inline void addString(wxMemoryBuffer &buffer, const std::string &str) {
 bool FPP::GetPathAsJSON(const std::string &path, wxJSONValue &val) {
     wxFileName fn;
     fn = path;
-    if (fn.Exists()) {
+    if (FileExists(fn)) {
         wxJSONReader reader;
         wxFile tf(fn.GetFullPath());
         wxString json;
@@ -2213,6 +2214,8 @@ bool FPP::UploadPixelOutputs(ModelManager* allmodels,
         defaultBrightness = 100;
     }
 
+    float defaultGamma = controller->GetDefaultGammaUnderFullControl();
+
     wxString pinout = "1.x";
     std::map<std::string, wxJSONValue> origStrings;
     wxString origType = "";
@@ -2313,7 +2316,7 @@ bool FPP::UploadPixelOutputs(ModelManager* allmodels,
                     vs["endNulls"] = 0;
                     vs["zigZag"] = 0; // If we zigzag in xLights, we don't do it in the controller, if we need it in the controller, we don't know about it here
                     vs["brightness"] = defaultBrightness;
-                    vs["gamma"] = wxString("1.0");
+                    vs["gamma"] = wxString::Format("%.1f", defaultGamma);
                 }
                 if (pvs->_reverseSet) {
                     vs["reverse"] = pvs->_reverse == "Reverse" ? 1 : 0;
@@ -2389,7 +2392,7 @@ bool FPP::UploadPixelOutputs(ModelManager* allmodels,
             vs["endNulls"] = 0;
             vs["zigZag"] = 0;
             vs["brightness"] = defaultBrightness;
-            vs["gamma"] = wxString("1.0");
+            vs["gamma"] = wxString::Format("%.1f", defaultGamma);
             stringData["outputs"][x]["virtualStrings"].Append(vs);
         }
         if ((x & 0x3) == 0) {

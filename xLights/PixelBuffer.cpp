@@ -203,8 +203,6 @@ namespace
       return a.x * b.x + a.y * b.y + a.z * b.z;
    }
 
-   const float PI = 3.14159265359f;
-
    // code for fold transition
    xlColor foldIn( const ColorBuffer& cb0, const RenderBuffer* rb1, double s, double t, float progress, bool isReverse )
    {
@@ -964,9 +962,10 @@ void PixelBufferClass::reset(int nlayers, int timing, bool isNode)
     }
 }
 
-void PixelBufferClass::InitPerModelBuffers(const ModelGroup &model, int layer, int timing) {
+void PixelBufferClass::InitPerModelBuffers(const ModelGroup& model, int layer, int timing)
+{
     for (const auto& it : model.Models()) {
-        Model *m = it;
+        Model* m = it;
         wxASSERT(m != nullptr);
         RenderBuffer* buf = new RenderBuffer(frame);
         buf->SetFrameTimeInMs(timing);
@@ -977,7 +976,21 @@ void PixelBufferClass::InitPerModelBuffers(const ModelGroup &model, int layer, i
     }
 }
 
-void PixelBufferClass::InitBuffer(const Model &pbc, int layers, int timing, bool zeroBased)
+void PixelBufferClass::InitPerModelBuffersDeep(const ModelGroup& model, int layer, int timing)
+{
+    for (const auto& it : model.GetFlatModels()) {
+        Model* m = it;
+        wxASSERT(m != nullptr);
+        RenderBuffer* buf = new RenderBuffer(frame);
+        buf->SetFrameTimeInMs(timing);
+        m->InitRenderBufferNodes("Default", "2D", "None", buf->Nodes, buf->BufferWi, buf->BufferHt);
+        buf->InitBuffer(buf->BufferHt, buf->BufferWi, buf->BufferHt, buf->BufferWi, "None");
+        GPURenderUtils::setupRenderBuffer(this, buf);
+        layers[layer]->modelBuffers.push_back(std::unique_ptr<RenderBuffer>(buf));
+    }
+}
+
+void PixelBufferClass::InitBuffer(const Model& pbc, int layers, int timing, bool zeroBased)
 {
     modelName = pbc.GetFullName();
     if (zeroBased)
@@ -2465,13 +2478,17 @@ void PixelBufferClass::SetLayerSettings(int layer, const SettingsMap &settingsMa
         // 2019-02-22 This was "Horizontal Per Model" but it causes DMX Model issues ...
         // so I have changed it to "Single Line". In theory both should create all the nodes
         auto tt = type;
+        bool go_deep = false;
         if (StartsWith(type, "Per Model")) {
             tt = "Single Line";
+            if (type.compare(type.length() - 4, 4, "Deep") == 0) {
+                go_deep = true;
+            }
         }
-        model->InitRenderBufferNodes(tt, camera, transform, inf->buffer.Nodes, inf->BufferWi, inf->BufferHt);
+        model->InitRenderBufferNodes(tt, camera, transform, inf->buffer.Nodes, inf->BufferWi, inf->BufferHt, go_deep);
         if (origNodeCount != 0 && origNodeCount != inf->buffer.Nodes.size()) {
             inf->buffer.Nodes.clear();
-            model->InitRenderBufferNodes(tt, camera, transform, inf->buffer.Nodes, inf->BufferWi, inf->BufferHt);
+            model->InitRenderBufferNodes(tt, camera, transform, inf->buffer.Nodes, inf->BufferWi, inf->BufferHt, go_deep);
         }
 
         int curBH = inf->BufferHt;
@@ -2525,19 +2542,42 @@ void PixelBufferClass::SetLayerSettings(int layer, const SettingsMap &settingsMa
 
         if (type.compare(0, 9, "Per Model") == 0) {
             inf->usingModelBuffers = true;
-            const ModelGroup *gp = dynamic_cast<const ModelGroup*>(model);
-            int cnt = 0;
-            for (const auto& it : inf->modelBuffers) {
-                std::string ntype = type.substr(10, type.length() - 10);
-                int bw, bh;
-                it->Nodes.clear();
-                gp->Models()[cnt]->InitRenderBufferNodes(ntype, camera, transform, it->Nodes, bw, bh);
-                if (bw == 0) bw = 1; // zero sized buffers are a problem
-                if (bh == 0) bh = 1;
-                it->InitBuffer(bh, bw, bh, bw, transform);
-                it->SetAllowAlphaChannel(inf->buffer.allowAlpha);
-                GPURenderUtils::setupRenderBuffer(this, it.get());
-                ++cnt;
+            if (type.compare(type.length()-4, 4, "Deep") == 0) {
+                inf->usingModelBuffersDeep = true;
+                const ModelGroup* gp = dynamic_cast<const ModelGroup*>(model);
+                std::list<Model*> flat_models = gp->GetFlatModels();
+                std::list<Model*>::iterator it_m = flat_models.begin();
+                for (const auto& it : inf->modelBuffers) {
+                    std::string ntype = "Default";// type.substr(10, type.length() - 10);
+                    int bw, bh;
+                    it->Nodes.clear();
+                    (*it_m)->InitRenderBufferNodes(ntype, camera, transform, it->Nodes, bw, bh);
+                    if (bw == 0)
+                        bw = 1; // zero sized buffers are a problem
+                    if (bh == 0)
+                        bh = 1;
+                    it->InitBuffer(bh, bw, bh, bw, transform);
+                    it->SetAllowAlphaChannel(inf->buffer.allowAlpha);
+                    GPURenderUtils::setupRenderBuffer(this, it.get());
+                    ++it_m;
+                }
+            } else {
+                const ModelGroup* gp = dynamic_cast<const ModelGroup*>(model);
+                int cnt = 0;
+                for (const auto& it : inf->modelBuffers) {
+                    std::string ntype = type.substr(10, type.length() - 10);
+                    int bw, bh;
+                    it->Nodes.clear();
+                    gp->Models()[cnt]->InitRenderBufferNodes(ntype, camera, transform, it->Nodes, bw, bh);
+                    if (bw == 0)
+                        bw = 1; // zero sized buffers are a problem
+                    if (bh == 0)
+                        bh = 1;
+                    it->InitBuffer(bh, bw, bh, bw, transform);
+                    it->SetAllowAlphaChannel(inf->buffer.allowAlpha);
+                    GPURenderUtils::setupRenderBuffer(this, it.get());
+                    ++cnt;
+                }
             }
         } else {
             inf->usingModelBuffers = false;
@@ -2621,9 +2661,21 @@ void PixelBufferClass::MergeBuffersForLayer(int layer) {
 void PixelBufferClass::SetLayer(int layer, int period, bool resetState)
 {
     layers[layer]->buffer.SetState(period, resetState, modelName);
-    if (layers[layer]->usingModelBuffers) {
+    if (layers[layer]->usingModelBuffersDeep) {
+        const ModelGroup* grp = dynamic_cast<const ModelGroup*>(model);
+        std::list<Model*> flat_models = grp->GetFlatModels();
+        std::list<Model*>::iterator it_m = flat_models.begin();
+        for (auto it = layers[layer]->modelBuffers.begin(); it != layers[layer]->modelBuffers.end(); ++it, it_m++) {
+            if (frame->AllModels[(*it_m)->Name()] == nullptr) {
+                (*it)->SetState(period, resetState, (*it_m)->GetFullName());
+            } else {
+                (*it)->SetState(period, resetState, (*it_m)->Name());
+            }
+        }
+    }
+    else if (layers[layer]->usingModelBuffers) {
         int cnt = 0;
-        const ModelGroup *grp = dynamic_cast<const ModelGroup*>(model);
+        const ModelGroup* grp = dynamic_cast<const ModelGroup*>(model);
         for (auto it = layers[layer]->modelBuffers.begin(); it != layers[layer]->modelBuffers.end(); ++it, cnt++) {
             if (frame->AllModels[grp->Models()[cnt]->Name()] == nullptr) {
                 (*it)->SetState(period, resetState, grp->Models()[cnt]->GetFullName());

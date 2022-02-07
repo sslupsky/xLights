@@ -37,7 +37,7 @@
 
 std::string Falcon::SendToFalconV4(std::string msg)
 {
-    return PutURL("/api", msg, true, "", "", "application/json");
+    return PutURL("/api", msg, "", "", "application/json");
 }
 
 std::vector<std::string> Falcon::V4_GetMediaFiles()
@@ -1375,6 +1375,7 @@ public:
     int port = -1;
     float gamma = 1.0;
     int groupCount = 1;
+    int zig = 0;
     int smartRemote = 0;
     int nullPixels = 0;
     std::string colourOrder;
@@ -1454,6 +1455,7 @@ void Falcon::InitialiseStrings(std::vector<FalconString*>& stringsData, int max,
             string->colourOrder = "RGB";
             string->direction = "Forward";
             string->groupCount = 1;
+            string->zig = 0;
             string->smartRemote = 0x00;
             newStringsData.push_back(string);
             logger_base.debug("    Added default string to port %d.", i + 1);
@@ -1464,7 +1466,7 @@ void Falcon::InitialiseStrings(std::vector<FalconString*>& stringsData, int max,
 
 std::string Falcon::BuildStringPort(FalconString* string) const {
 
-    return wxString::Format("&p%i=%i&x%i=%i&t%i=%i&u%i=%i&s%i=%i&c%i=%i&y%i=%s&b%i=%i&n%i=%i&G%i=%i&o%i=%i&d%i=%i&g%i=%i&w%i=%d",
+    return wxString::Format("&p%i=%i&x%i=%i&t%i=%i&u%i=%i&s%i=%i&c%i=%i&y%i=%s&b%i=%i&n%i=%i&G%i=%i&o%i=%i&d%i=%i&g%i=%i&w%i=%d&z%i=%d",
         string->index, string->port,
         string->index, string->virtualStringIndex,
         string->index, string->protocol,
@@ -1478,8 +1480,9 @@ std::string Falcon::BuildStringPort(FalconString* string) const {
         string->index, EncodeColourOrder(string->colourOrder),
         string->index, EncodeDirection(string->direction),
         string->index, string->groupCount,
-        string->index, string->smartRemote
-    ).ToStdString();
+        string->index, string->smartRemote, 
+        string->index, string->zig)
+        .ToStdString();
 }
 
 FalconString* Falcon::FindPort(const std::vector<FalconString*>& stringData, int port) const {
@@ -1577,6 +1580,7 @@ void Falcon::EnsureSmartStringExists(std::vector<FalconString*>& stringData, int
         string->colourOrder = "RGB";
         string->direction = "Forward";
         string->groupCount = 1;
+        string->zig = 0;
         string->smartRemote = smartRemote;
         stringData.push_back(string);
     }
@@ -1679,6 +1683,7 @@ void Falcon::ReadStringData(const wxXmlDocument& stringsDoc, std::vector<FalconS
         string->colourOrder = DecodeColourOrder(wxAtoi(e->GetAttribute("o", "0")));
         string->direction = DecodeDirection(wxAtoi(e->GetAttribute("d", "0")));
         string->groupCount = std::max(1, wxAtoi(e->GetAttribute("g", "1")));
+        string->zig = wxAtoi(e->GetAttribute("z", "0"));
         int sr = wxAtoi(e->GetAttribute("sr", "-1"));
         if (sr == -1) {
             string->smartRemote = wxAtoi(e->GetAttribute("x", "0"));
@@ -2145,7 +2150,7 @@ bool Falcon::V4_ValidateWAV(const std::string& media)
     wxFile f;
     if (f.Open(media))         {
         
-        uint8_t buffer[34];
+        uint8_t buffer[36];
         if (f.Read(&buffer, sizeof(buffer)) == sizeof(buffer))             {
 
             // is it a WAV file
@@ -2161,8 +2166,17 @@ bool Falcon::V4_ValidateWAV(const std::string& media)
             }
 
             // is sample rate 44100
-            if (buffer[24] != 0x44 || buffer[25] != 0xAC) {
-                logger_base.error("Not 44,100 bits per second.");
+            if (!(
+                (buffer[24] == 0x44 && buffer[25] == 0xac) || // 44100
+                (buffer[24] == 0x80 && buffer[25] == 0xbb) || // 48000
+                (buffer[24] == 0x00 && buffer[25] == 0x7d) || // 32000
+                (buffer[24] == 0x22 && buffer[25] == 0x56) || // 22050
+                (buffer[24] == 0x80 && buffer[25] == 0x3e) || // 16000
+                (buffer[24] == 0x11 && buffer[25] == 0x2b) || // 11025
+                (buffer[24] == 0x40 && buffer[25] == 0x1f)    // 8000
+                    )) {
+                int br = (((int)buffer[25]) << 8) + (int)buffer[24];
+                logger_base.error("Not valid bit rate: %d", br);
                 return false;
             }
 
@@ -2173,13 +2187,13 @@ bool Falcon::V4_ValidateWAV(const std::string& media)
             }
 
             // is it block align 4
-            if (buffer[30] != 4 || buffer[31] != 0) {
+            if (buffer[32] != 4 || buffer[33] != 0) {
                 logger_base.error("WAV file block alignment is not 4.");
                 return false;
             }
 
             // is it 16 bit
-            if (buffer[32] != 4 || buffer[33] != 0) {
+            if (buffer[34] != 16 || buffer[35] != 0) {
                 logger_base.error("Not 16 bits per sample.");
                 return false;
             }
@@ -2622,6 +2636,7 @@ bool Falcon::SetOutputs(ModelManager* allmodels, OutputManager* outputManager, C
                 else {
                     fs->groupCount = 1;
                 }
+                fs->zig = 0;
                 newStringData.push_back(fs);
             }
         }

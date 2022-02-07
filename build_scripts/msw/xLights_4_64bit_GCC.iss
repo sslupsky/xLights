@@ -59,7 +59,7 @@ Source: "../../bin64/xSchedule.map"; DestDir: "{app}"; Flags: "ignoreversion"
 Source: "../../bin/xschedule.windows.properties"; DestDir: "{app}"; Flags: "ignoreversion"
 Source: "../../bin/xScheduleWeb\*.*"; DestDir: "{app}/xScheduleWeb"; Flags: ignoreversion recursesubdirs
 Source: "../../include\xSchedule64.ico"; DestDir: "{app}"; Flags: "ignoreversion"
-Source: "../../xSchedule/API Documentation.txt"; DestDir: "{app}"
+Source: "../../documentation/xSchedule API Documentation.txt"; DestDir: "{app}"
 
 ; xCapture
 Source: "../../bin64/xCapture.exe"; DestDir: "{app}"
@@ -82,7 +82,7 @@ Source: "../../include/xfade64.ico"; DestDir: "{app}"; Flags: "ignoreversion"
 
 ; xlDo
 Source: "../../bin64/xlDo.exe"; DestDir: "{app}"
-Source: "../../xlDo/xlDo Commands.txt"; DestDir: "{app}"
+Source: "../../documentation/xlDo Commands.txt"; DestDir: "{app}"
 
 ; xSMSDaemon
 Source: "../../bin64/xSMSDaemon.dll"; DestDir: "{app}"
@@ -113,11 +113,11 @@ Source: "../../bin64/libwinpthread-1.dll"; DestDir: "{app}";  Flags: "ignorevers
 Source: "../../bin64/liblog4cpp.dll"; DestDir: "{app}";  Flags: "ignoreversion"
 
 ; avlib - video and audio
-Source: "../../bin64/avcodec-58.dll"; DestDir: "{app}";  Flags: "ignoreversion"
-Source: "../../bin64/avformat-58.dll"; DestDir: "{app}";  Flags: "ignoreversion"
-Source: "../../bin64/avutil-56.dll"; DestDir: "{app}";  Flags: "ignoreversion"
-Source: "../../bin64/swresample-3.dll"; DestDir: "{app}";  Flags: "ignoreversion"
-Source: "../../bin64/swscale-5.dll"; DestDir: "{app}";  Flags: "ignoreversion"
+Source: "../../bin64/avcodec-59.dll"; DestDir: "{app}";  Flags: "ignoreversion"
+Source: "../../bin64/avformat-59.dll"; DestDir: "{app}";  Flags: "ignoreversion"
+Source: "../../bin64/avutil-57.dll"; DestDir: "{app}";  Flags: "ignoreversion"
+Source: "../../bin64/swresample-4.dll"; DestDir: "{app}";  Flags: "ignoreversion"
+Source: "../../bin64/swscale-6.dll"; DestDir: "{app}";  Flags: "ignoreversion"
 
 ; SDL - audio playing
 Source: "../../bin64/SDL2.dll"; DestDir: "{app}";  Flags: "ignoreversion"
@@ -152,6 +152,9 @@ Source: "../../controllers/*.*"; DestDir: "{app}/controllers"   ; Flags: ignorev
 
 ; Palettes
 Source: "../../palettes/*.*"; DestDir: "{app}/palettes"   ; Flags: ignoreversion recursesubdirs
+
+; Scripts
+Source: "../../scripts/*.*"; DestDir: "{app}/scripts"   ; Flags: ignoreversion recursesubdirs
 
 [Icons]
 Name: "{group}\xLights64"; Filename: "{app}\xLights.EXE"; WorkingDir: "{app}"

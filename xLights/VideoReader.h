@@ -29,7 +29,8 @@ class VideoReader
 public:
     static bool IsVideoFile(const std::string &filename);
     static long GetVideoLength(const std::string& filename);
-	VideoReader(const std::string& filename, int width, int height, bool keepaspectratio, bool usenativeresolution = false, bool wantAlpha = false, bool bgr = false);
+	VideoReader(const std::string& filename, int width, int height, bool keepaspectratio, bool usenativeresolution = false,
+                bool wantAlpha = false, bool bgr = false, bool wantsHardwareDecoderType = false);
 	~VideoReader();
 	int GetLengthMS() const { return (int)_lengthMS; };
 	void Seek(int timestampMS, bool readFrame = true);
@@ -49,6 +50,7 @@ private:
     bool readFrame(int timestampMS);
     void reopenContext(bool allowHWDecoder = true);
     
+    bool _wantsHWType = false;
     int _maxwidth = 0;
     int _maxheight = 0;
 	bool _valid = false;
@@ -61,7 +63,7 @@ private:
 	AVFormatContext* _formatContext = nullptr;
 	AVCodecContext* _codecContext = nullptr;
 	AVStream* _videoStream = nullptr;
-    AVCodec* _decoder = nullptr;
+    const AVCodec* _decoder = nullptr;
     AVBufferRef* _hw_device_ctx = nullptr;
     void *hwDecoderCache = nullptr;
 	int _streamIndex = 0;

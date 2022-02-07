@@ -54,6 +54,7 @@ class wxScrolledWindow;
 class LayoutGroup;
 class wxStringInputStream;
 class impTreeItemData;
+class Motion3DEvent;
 
 wxDECLARE_EVENT(EVT_LISTITEM_CHECKED, wxCommandEvent);
 
@@ -256,6 +257,8 @@ class LayoutPanel: public wxPanel
 		void OnNotebook_ObjectsPageChanged(wxNotebookEvent& event);
 		//*)
 
+        void OnPreviewMotion3DButtonEvent(wxCommandEvent &event);
+        void OnPreviewMotion3D(Motion3DEvent &event);
         void OnPropertyGridSelection(wxPropertyGridEvent& event);
         void OnPropertyGridItemCollapsed(wxPropertyGridEvent& event);
         void OnPropertyGridItemExpanded(wxPropertyGridEvent& event);
@@ -336,6 +339,10 @@ class LayoutPanel: public wxPanel
         void BulkEditDimmingCurves();
         void ReplaceModel();
         void ShowNodeLayout();
+        void EditSubmodels();
+        void EditFaces();
+        void EditStates();
+        void EditModelData();
         void ShowWiring();
         void ExportModelAsCAD();
         void ExportLayoutDXF();

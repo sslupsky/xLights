@@ -250,6 +250,7 @@
 		<Unit filename="../xLights/Discovery.h" />
 		<Unit filename="../xLights/ExportSettings.cpp" />
 		<Unit filename="../xLights/ExportSettings.h" />
+		<Unit filename="../xLights/ExternalHooks.h" />
 		<Unit filename="../xLights/IPEntryDialog.h" />
 		<Unit filename="../xLights/JobPool.cpp" />
 		<Unit filename="../xLights/JobPool.h" />
@@ -259,6 +260,8 @@
 		<Unit filename="../xLights/TraceLog.h" />
 		<Unit filename="../xLights/UtilFunctions.cpp" />
 		<Unit filename="../xLights/UtilFunctions.h" />
+		<Unit filename="../xLights/automation/automation.cpp" />
+		<Unit filename="../xLights/automation/automation.h" />
 		<Unit filename="../xLights/controllers/BaseController.cpp" />
 		<Unit filename="../xLights/controllers/BaseController.h" />
 		<Unit filename="../xLights/controllers/ControllerCaps.cpp" />

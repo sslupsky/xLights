@@ -17,8 +17,10 @@ MetalPixelBufferComputeData::~MetalPixelBufferComputeData() {
 MetalRenderBufferComputeData::MetalRenderBufferComputeData(RenderBuffer *rb, MetalPixelBufferComputeData *pbd) : renderBuffer(rb), pixelBufferData(pbd) {
     commandBuffer = nil;
     pixelBuffer = nil;
+    pixelBufferCopy = nil;
     pixelTexture = nil;
     pixelBufferSize = 0;
+    pixelTextureSize = {0, 0};
 }
 MetalRenderBufferComputeData::~MetalRenderBufferComputeData() {
     pixelBufferData = nullptr;
@@ -28,6 +30,9 @@ MetalRenderBufferComputeData::~MetalRenderBufferComputeData() {
         }
         if (pixelBuffer != nil) {
             [pixelBuffer release];
+        }
+        if (pixelBufferCopy != nil) {
+            [pixelBufferCopy release];
         }
         if (pixelTexture != nil) {
             [pixelTexture release];
@@ -42,8 +47,27 @@ id<MTLCommandBuffer> MetalRenderBufferComputeData::getCommandBuffer() {
     }
     return commandBuffer;
 }
+id<MTLBuffer> MetalRenderBufferComputeData::getPixelBufferCopy() {
+    if (pixelBufferCopy == nil) {
+        int bufferSize = renderBuffer->GetPixelCount() * 4;
+        id<MTLBuffer> newBuffer = [[MetalComputeUtilities::INSTANCE.device newBufferWithLength:bufferSize options:MTLResourceStorageModePrivate] retain];
+        std::string name = renderBuffer->GetModelName() + "PixelBufferCopy";
+        NSString* mn = [NSString stringWithUTF8String:name.c_str()];
+        [newBuffer setLabel:mn];
+        pixelBufferCopy = newBuffer;
+    }
+    return pixelBufferCopy;
+}
+
 id<MTLBuffer> MetalRenderBufferComputeData::getPixelBuffer(bool sendToGPU) {
     if (pixelBufferSize < renderBuffer->GetPixelCount()) {
+        if (pixelBuffer) {
+            [pixelBuffer release];
+        }
+        if (pixelBufferCopy) {
+            [pixelBufferCopy release];
+            pixelBufferCopy = nil;
+        }
         int bufferSize = renderBuffer->GetPixelCount() * 4;
         id<MTLBuffer> newBuffer = [[MetalComputeUtilities::INSTANCE.device newBufferWithLength:bufferSize options:MTLResourceStorageModeShared] retain];
         std::string name = renderBuffer->GetModelName() + "PixelBuffer";
@@ -78,6 +102,18 @@ id<MTLBuffer> MetalRenderBufferComputeData::getPixelBuffer(bool sendToGPU) {
 }
 id<MTLTexture> MetalRenderBufferComputeData::getPixelTexture() {
     getPixelBuffer(true);
+    
+    if (pixelTexture != nil &&
+        (renderBuffer->BufferWi != pixelTextureSize.first
+        || renderBuffer->BufferHt != pixelTextureSize.second)) {
+     
+        @autoreleasepool {
+            [pixelTexture release];
+            pixelTexture = nil;
+        }
+        pixelTextureSize = { 0, 0 };
+    }
+    
     if (pixelTexture == nil) {
         @autoreleasepool {
             MTLTextureDescriptor *d = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat: MTLPixelFormatRGBA8Unorm
@@ -92,6 +128,7 @@ id<MTLTexture> MetalRenderBufferComputeData::getPixelTexture() {
             std::string name = renderBuffer->GetModelName() + "PixelTexture";
             NSString* mn = [NSString stringWithUTF8String:name.c_str()];
             [pixelTexture setLabel:mn];
+            pixelTextureSize = { renderBuffer->BufferWi, renderBuffer->BufferHt };
         }
     }
     if (currentDataLocation == BUFFER) {
@@ -157,51 +194,48 @@ void MetalRenderBufferComputeData::waitForCompletion() {
     }
 }
 bool MetalRenderBufferComputeData::blur(int radius) {
-    if ((renderBuffer->BufferHt < (radius * 2)) || (renderBuffer->BufferWi < (radius * 2))) {
-        // the performance shaders don't handle edges so if less than the radius, bail to the CPU
+    if ((renderBuffer->BufferHt < (radius * 2)) || (renderBuffer->BufferWi < (radius * 2)) || ((renderBuffer->BufferWi * renderBuffer->BufferHt) < 1024)) {
+        // Smallish buffer, overhead of sending to GPU will be more than the gain
         return false;
     }
-    if (@available(macOS 10.13, *)) {
-        @autoreleasepool {
-            id<MTLCommandBuffer> commandBuffer = getCommandBuffer();
-            getPixelTexture();
-            
-            /*
-            float sigma = radius - 1;
-            sigma = std::sqrt(sigma);
-            MPSImageGaussianBlur* gblur = [[MPSImageGaussianBlur alloc] initWithDevice:MetalComputeUtilities::INSTANCE.device sigma:sigma];
-            */
-            //tent blur is closest to what is implemented on the C++/CPU side
-            float r = (radius - 1) * 2 - 1;
-            MPSImageTent *gblur = [[MPSImageTent alloc] initWithDevice:MetalComputeUtilities::INSTANCE.device
-                                                         kernelWidth:r
-                                                        kernelHeight:r];
-            [gblur setLabel:@"Blur"];
+    @autoreleasepool {
+        id<MTLCommandBuffer> commandBuffer = getCommandBuffer();
+        getPixelTexture();
+        
+        /*
+        float sigma = radius - 1;
+        sigma = std::sqrt(sigma);
+        MPSImageGaussianBlur* gblur = [[MPSImageGaussianBlur alloc] initWithDevice:MetalComputeUtilities::INSTANCE.device sigma:sigma];
+        */
+        //tent blur is closest to what is implemented on the C++/CPU side
+        float r = (radius - 1) * 2 - 1;
+        MPSImageTent *gblur = [[MPSImageTent alloc] initWithDevice:MetalComputeUtilities::INSTANCE.device
+                                                     kernelWidth:r
+                                                    kernelHeight:r];
+        [gblur setEdgeMode:MPSImageEdgeModeClamp];
+        [gblur setLabel:@"Blur"];
 
-            MPSCopyAllocator myAllocator = ^id <MTLTexture>( MPSKernel * __nonnull filter,
-                                                            __nonnull id <MTLCommandBuffer> cmdBuf,
-                                                            __nonnull id <MTLTexture> sourceTexture)
-            {
-                MTLPixelFormat format = sourceTexture.pixelFormat;
-                MTLTextureDescriptor *d = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat: format
-                                                                                             width: sourceTexture.width
-                                                                                            height: sourceTexture.height
-                                                                                         mipmapped: NO];
-                [sourceTexture release];
-                d.usage = MTLTextureUsageShaderRead | MTLTextureUsageShaderWrite;
-                return [cmdBuf.device newTextureWithDescriptor: d];
-            };
-            [commandBuffer pushDebugGroup:@"Blur"];
-            BOOL ok = [gblur encodeToCommandBuffer:commandBuffer
-                                    inPlaceTexture:&pixelTexture
-                             fallbackCopyAllocator:myAllocator];
-            [commandBuffer popDebugGroup];
-            [gblur release];
-            return ok;
-        }
+        MPSCopyAllocator myAllocator = ^id <MTLTexture>( MPSKernel * __nonnull filter,
+                                                        __nonnull id <MTLCommandBuffer> cmdBuf,
+                                                        __nonnull id <MTLTexture> sourceTexture)
+        {
+            MTLPixelFormat format = sourceTexture.pixelFormat;
+            MTLTextureDescriptor *d = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat: format
+                                                                                         width: sourceTexture.width
+                                                                                        height: sourceTexture.height
+                                                                                     mipmapped: NO];
+            [sourceTexture release];
+            d.usage = MTLTextureUsageShaderRead | MTLTextureUsageShaderWrite;
+            return [cmdBuf.device newTextureWithDescriptor: d];
+        };
+        [commandBuffer pushDebugGroup:@"Blur"];
+        BOOL ok = [gblur encodeToCommandBuffer:commandBuffer
+                                inPlaceTexture:&pixelTexture
+                         fallbackCopyAllocator:myAllocator];
+        [commandBuffer popDebugGroup];
+        [gblur release];
+        return ok;
     }
-    
-    return false;
 }
 
 MetalRenderBufferComputeData *MetalRenderBufferComputeData::getMetalRenderBufferComputeData(RenderBuffer *b) {
@@ -212,44 +246,42 @@ MetalRenderBufferComputeData *MetalRenderBufferComputeData::getMetalRenderBuffer
 
 MetalComputeUtilities::MetalComputeUtilities() {
     enabled = false;
-    if (@available(macOS 10.13, *)) {
-        device = nil;
-        
-        NSArray *devices = MTLCopyAllDevices();
-        for (id d in devices) {
-            if ([d isRemovable]) {
-                device = [d retain];
-            }
+    device = nil;
+    
+    NSArray *devices = MTLCopyAllDevices();
+    for (id d in devices) {
+        if ([d isRemovable]) {
+            device = [d retain];
         }
-        [devices release];
-        if (device == nil) {
-            device = MTLCreateSystemDefaultDevice();
-        }
-        if (device.argumentBuffersSupport == MTLArgumentBuffersTier1) {
-            device = nil;
-            return;
-        }
-
-        NSError *libraryError = NULL;
-        NSString *libraryFile = [[NSBundle mainBundle] pathForResource:@"EffectComputeFunctions" ofType:@"metallib"];
-        if (!libraryFile) {
-            NSLog(@"Library file error");
-            return;
-        }
-        library = [device newLibraryWithFile:libraryFile error:&libraryError];
-        if (!library) {
-            NSLog(@"Library error: %@", libraryError);
-            return;
-        }
-        [library setLabel:@"EffectComputeFunctionsLibrary"];
-
-        commandQueue = [device newCommandQueue];
-        if (!commandQueue) {
-            return;
-        }
-        [commandQueue setLabel:@"MetalEffectCommandQueue"];
-        enabled = true;
     }
+    [devices release];
+    if (device == nil) {
+        device = MTLCreateSystemDefaultDevice();
+    }
+    if (device.argumentBuffersSupport == MTLArgumentBuffersTier1) {
+        device = nil;
+        return;
+    }
+
+    NSError *libraryError = NULL;
+    NSString *libraryFile = [[NSBundle mainBundle] pathForResource:@"EffectComputeFunctions" ofType:@"metallib"];
+    if (!libraryFile) {
+        NSLog(@"Library file error");
+        return;
+    }
+    library = [device newLibraryWithFile:libraryFile error:&libraryError];
+    if (!library) {
+        NSLog(@"Library error: %@", libraryError);
+        return;
+    }
+    [library setLabel:@"EffectComputeFunctionsLibrary"];
+
+    commandQueue = [device newCommandQueue];
+    if (!commandQueue) {
+        return;
+    }
+    [commandQueue setLabel:@"MetalEffectCommandQueue"];
+    enabled = true;
 }
 MetalComputeUtilities::~MetalComputeUtilities() {
     @autoreleasepool {
